@@ -32,7 +32,7 @@ function dontLeave() {
           <div class="card-body">
             <div class="row">
               <div class="col-md-6">
-                <h3 class="card-title">DAQari</h3>
+                <h3 class="card-title"><img src="images/logo.svg" style="height: 1.75rem;"></img> DAQari</h3>
                 <h6 class="card-subtitle mb-2 text-muted">Browser-based data acquisition</h6>
                 <button class="btn btn-success btn-lg m-1 mb-4 mx-auto" id="connectButton"><i class="fas fa-plug"></i> Connect</button>
                 <h6 class="card-subtitle mb-2 text-muted"><i class="far fa-copyright"></i> Nicholas Ravanelli, PhD</h6>
@@ -158,12 +158,17 @@ function dontLeave() {
           await writableStream.close();
 
       }
+      function channelSettingsModal(ch){
+        $('#CH-id-title').html(ch);
+        var Modal = new bootstrap.Modal(document.getElementById('ChannelSettings'));
+        Modal.show();
+      }
 
       function drawGraphs(count){
         for (let i = 0; i < count; i++) {
           var graphdiv = 'ChartChannel-'+i;
           //Create chart div
-          var charthtml = '<div class="card mb-2"><div class="card-body"><div class="row"><div class="col-2"><h6 class="card-title"><i class="fas fa-cog"></i> Channel '+i+'</h6><p class="lead" id="rawdata-channel-'+i+'"></p></div><div class="col-10"><canvas id="'+graphdiv+'" style="height:100px"></canvas></div></div></div></div>';
+          var charthtml = '<div class="card mb-2"><div class="card-body"><div class="row"><div class="col-2"><h6 class="card-title"><i class="fas fa-cog" onclick="channelSettingsModal('+i+')";></i> Channel '+i+'</h6><p class="lead" id="rawdata-channel-'+i+'"></p></div><div class="col-10"><canvas id="'+graphdiv+'" style="height:100px"></canvas></div></div></div></div>';
           $("#DAQ-charts").append(charthtml);
 
           //Chartjs create config
@@ -227,5 +232,51 @@ function dontLeave() {
 
 
 </script>
+
+<!-- Modals -->
+<div class="modal fade" id="ChannelSettings" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ChannelSettingsLabel">Channel <span id="CH-id-title"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="low-pc-input" class="form-label">Point Calibration (Low):</label>
+        <div id="lowpointCalibrateHelp" class="form-text m-0">e.g. 0 V = 0 C</div>
+        <div class="input-group mb-3">
+          <input type="number" class="form-control" placeholder="0" id="low-pc-input">
+          <span class="input-group-text"> = </span>
+          <input type="number" class="form-control" placeholder="0" id="low-pc-input-equivalent">
+        </div>
+
+
+        <label for="high-pc-input" class="form-label">Point Calibration (High):</label>
+        <div id="highpointCalibrateHelp" class="form-text m-0">e.g. 5 V = 50 C</div>
+        <div class="input-group mb-3">
+          <input type="number" class="form-control" placeholder="5" id="high-pc-input">
+          <span class="input-group-text"> = </span>
+          <input type="number" class="form-control" placeholder="50" id="high-pc-input-equivalent">
+        </div>
+
+        <div class="mb-3">
+          <label for="channelUnit" class="form-label">Channel Units:</label>
+          <input type="text" class="form-control" id="channelUnit" placeholder="%RH">
+        </div>
+
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault">
+          <label class="form-check-label" for="flexSwitchCheckDefault">Default switch checkbox input</label>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary">Save changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
   </body>
 </html>
