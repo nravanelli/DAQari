@@ -1,0 +1,33 @@
+@keyframes up-right {
+    0% {<!--from w w w .  j  a va 2  s. c  o m-->
+        transform: scale(1);
+        opacity: .25
+    }
+    50% {
+        transform: scale (1, 5);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: .25;
+    }
+}
+.circle {
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    opacity: .25;
+}
+.pulse-red {
+    background-color: red;
+    position: absolute;
+    -webkit-animation: up-right 1s infinite;
+    -moz-animation: up-right 1s infinite;
+    -o-animation: up-right 1s infinite;
+    animation: up-right 1s infinite;
+}
+
+.circle-grey {
+    background-color: grey;
+    position: absolute;
+}
