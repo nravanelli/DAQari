@@ -17,6 +17,7 @@
     <script src="js/chartjs-adapter-luxon.js"></script>
     <script src="js/chartjs-plugin-streaming.js"></script>
     <script src="js/idb-keyval.min.js"></script>
+    <script type="module" src="js/regression.min.js"></script>
 
     <title>DAQari V1.0</title>
 <script>
@@ -64,10 +65,11 @@ function dontLeave() {
 
       </div>
     <script>
-    // File handle
+    // Global variables
     let fileHandle;
     let recordingData = false;
     let lastloggedDate = 0;
+    let ChannelconfigArray = [];
 
     $("#LogdataSwitch").change(function(){
         if ($(this).is(':checked')){
@@ -118,8 +120,10 @@ function dontLeave() {
           }
           window['serialdata'] = data;
 
+
           for (let index = 0; index < Object.keys(data).length; ++index) {
-            document.getElementById('rawdata-channel-'+index).innerHTML = data[index];
+            var value = data[index];
+            document.getElementById('data-channel-'+index).innerHTML = value;
           };
 
           //save data if needed
@@ -153,22 +157,26 @@ function dontLeave() {
           await writableStream.write({
             type: "write",
             data: output+" \r\n",
-            position: size // Set the position to the current file size.
+            position: size,
           });
           await writableStream.close();
 
       }
+
+
       function channelSettingsModal(ch){
         $('#CH-id-title').html(ch);
+        $('#channel-id').val(ch);
         var Modal = new bootstrap.Modal(document.getElementById('ChannelSettings'));
         Modal.show();
       }
+
 
       function drawGraphs(count){
         for (let i = 0; i < count; i++) {
           var graphdiv = 'ChartChannel-'+i;
           //Create chart div
-          var charthtml = '<div class="card mb-2"><div class="card-body"><div class="row"><div class="col-2"><h6 class="card-title"><i class="fas fa-cog" onclick="channelSettingsModal('+i+')";></i> Channel '+i+'</h6><p class="lead" id="rawdata-channel-'+i+'"></p></div><div class="col-10"><canvas id="'+graphdiv+'" style="height:100px"></canvas></div></div></div></div>';
+          var charthtml = '<div class="card mb-2"><div class="card-body"><div class="row w-100"><h6 class="card-title"> <a data-bs-toggle="collapse" href="#channelgraphdivcollapes-'+i+'" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <a class="link-secondary" role="button" onclick="channelSettingsModal('+i+')";><i class="fas fa-cog"></i></a> Channel '+i+'; <i>Value: <span id="data-channel-'+i+'"></span></i> </h6></div><div class="row w-100 collapse show" id="channelgraphdivcollapes-'+i+'"><canvas id="'+graphdiv+'" style="max-height:100px"></canvas></div></div></div>';
           $("#DAQ-charts").append(charthtml);
 
           //Chartjs create config
@@ -200,14 +208,19 @@ function dontLeave() {
                     type: 'realtime',
                     realtime: {
                       duration: 20000,
-                      refresh: 500,
-                      delay: 500,
+                      refresh: 100,
+                      delay: 100,
                       onRefresh: chart => {
                           const now = Date.now();
                           // append the new data array to the existing chart data
+                          let value = window['serialdata'][i];
+
+                          if(ChannelconfigArray['serialdata'] && ChannelconfigArray['serialdata'][i].length !== 0){
+                              value = TransformData(ChannelconfigArray['serialdata'][i],'serial-in',window['serialdata'][i]);
+                          }
                           chart.data.datasets[0].data.push({
                             x : now,
-                            y : window['serialdata'][i]
+                            y : value
                           });
                         }
                     }
@@ -229,6 +242,66 @@ function dontLeave() {
         }
       }
 
+async function UpdateConfig(){
+  //clear Global config array and rewrite with all setting data from localdb
+  ChannelconfigArray = [];
+    await idbKeyval.entries().then((entries) => {
+      for (var i=0 , j = entries.length ; i < j ;i++){
+        let item = entries[i][0];
+        console.log(entries[i][1]);
+        let def = item.split('_');
+        if(def[0] == 'rawchannelsettings'){
+            let channel = def[1];
+            if (!ChannelconfigArray['serialdata']) ChannelconfigArray['serialdata'] = [];
+            ChannelconfigArray['serialdata'][channel] = entries[i][1];
+        }
+        if(def[0] == 'extrachannelsettings'){
+            let channel = def[1];
+            if (!ChannelconfigArray['extrachannel']) ChannelconfigArray['extrachannel'] = [];
+            ChannelconfigArray['extrachannel'][channel] = entries[i][1];
+        }
+      }
+    }
+  );
+}
+
+
+function TransformData(array,type,rawvalue){
+    var point1 = point2 = [];
+    point1[0] = array['low-pc-input'];
+    point1[1] = array['low-pc-input-equivalent'];
+    point2[0] = array['high-pc-input'];
+    point2[1] = array['high-pc-input-equivalent'];
+    var pcData = [point1,point2];
+    var regression = array.transformtype;
+        switch (regression){
+          case "linear":
+              const result = regression('linear',pcData);
+              return result.predict(rawvalue);
+          default:
+              console.log("Please select another flower");
+              return
+      }
+}
+
+$(document).ready(function() {
+  UpdateConfig();
+  $('#submitChannelSettings').click(async () => {
+          var data = $('#ChannelSettings-form').serializeArray().reduce(function(obj, item) {
+                        obj[item.name] = item.value;
+                        return obj;
+                    }, {});
+          var localdbkey = 'rawchannelsettings_'+data['channel-id'];
+          delete data['channel-id'];
+          await idbKeyval.set(localdbkey, data);
+  });
+});
+
+
+
+$(document).on('click', '.collapse-icon', function () {
+    $(this).find('i').toggleClass('fa-plus-square fa-minus-square');
+});
 
 
 </script>
@@ -242,37 +315,54 @@ function dontLeave() {
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <label for="low-pc-input" class="form-label">Point Calibration (Low):</label>
-        <div id="lowpointCalibrateHelp" class="form-text m-0">e.g. 0 V = 0 C</div>
-        <div class="input-group mb-3">
-          <input type="number" class="form-control" placeholder="0" id="low-pc-input">
-          <span class="input-group-text"> = </span>
-          <input type="number" class="form-control" placeholder="0" id="low-pc-input-equivalent">
-        </div>
+
+        <form id="ChannelSettings-form">
+          <input type="hidden" id="channel-id" name="channel-id" value="">
+
+          <div class="mb-3">
+            <label for="channelName" class="form-label">Channel Name:</label>
+            <input type="text" class="form-control" id="channelName" placeholder="Humidity" name="channelName">
+          </div>
+
+          <label for="low-pc-input" class="form-label">Point Calibration (Low):</label>
+          <div id="lowpointCalibrateHelp" class="form-text m-0">e.g. 0 V = 0 C</div>
+          <div class="input-group mb-3">
+            <input type="number" class="form-control" placeholder="0" id="low-pc-input" name="low-pc-input">
+            <span class="input-group-text"> = </span>
+            <input type="number" class="form-control" placeholder="0" id="low-pc-input-equivalent" name="low-pc-input-equivalent">
+          </div>
 
 
-        <label for="high-pc-input" class="form-label">Point Calibration (High):</label>
-        <div id="highpointCalibrateHelp" class="form-text m-0">e.g. 5 V = 50 C</div>
-        <div class="input-group mb-3">
-          <input type="number" class="form-control" placeholder="5" id="high-pc-input">
-          <span class="input-group-text"> = </span>
-          <input type="number" class="form-control" placeholder="50" id="high-pc-input-equivalent">
-        </div>
+          <label for="high-pc-input" class="form-label">Point Calibration (High):</label>
+          <div id="highpointCalibrateHelp" class="form-text m-0">e.g. 5 V = 50 C</div>
+          <div class="input-group mb-3">
+            <input type="number" class="form-control" placeholder="5" id="high-pc-input" name="high-pc-input">
+            <span class="input-group-text"> = </span>
+            <input type="number" class="form-control" placeholder="50" id="high-pc-input-equivalent" name="high-pc-input-equivalent">
+          </div>
 
-        <div class="mb-3">
-          <label for="channelUnit" class="form-label">Channel Units:</label>
-          <input type="text" class="form-control" id="channelUnit" placeholder="%RH">
-        </div>
+          <div class="mb-3">
+            <label for="channelUnit" class="form-label">Channel Units:</label>
+            <input type="text" class="form-control" id="channelUnit" placeholder="%RH" name="channelUnit">
+          </div>
 
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault">
-          <label class="form-check-label" for="flexSwitchCheckDefault">Default switch checkbox input</label>
-        </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="transformswitch" name="transform">
+            <label class="form-check-label" for="transformswitch">Transform & Data Log</label>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-check-label" for="transformtype">Transformation Type:</label>
+            <select class="form-select form-select-sm" id="transformtype" name="transformtype">
+              <option selected value="linear">Linear</option>
+            </select>
+          </div>
+
+        </form>
 
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary">Save changes</button>
+        <button type="button" class="btn btn-primary" id="submitChannelSettings" data-bs-dismiss="modal">Save changes</button>
       </div>
     </div>
   </div>

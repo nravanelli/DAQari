@@ -31,3 +31,7 @@
     background-color: grey;
     position: absolute;
 }
+
+#DAQ-charts .card-body {
+  padding: 0.5rem !important;
+}
