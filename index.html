@@ -17,7 +17,6 @@
     <script src="js/chartjs-adapter-luxon.js"></script>
     <script src="js/chartjs-plugin-streaming.js"></script>
     <script src="js/idb-keyval.min.js"></script>
-    <script type="module" src="js/regression.min.js">import regression from 'regression';</script>
 
     <title>DAQari V1.0</title>
 <script>
@@ -215,8 +214,8 @@ function dontLeave() {
                           // append the new data array to the existing chart data
                           let value = window['serialdata'][i];
 
-                          if(ChannelconfigArray['serialdata'] && ChannelconfigArray['serialdata'][i].length !== 0){
-                              value = TransformData(ChannelconfigArray['serialdata'][i],'serial-in',window['serialdata'][i]);
+                          if(ChannelconfigArray['serialdata'] && typeof ChannelconfigArray['serialdata'][i] !== 'undefined'){
+                              value = TransformData(ChannelconfigArray['serialdata'][i],'serial-in',value);
                           }
                           chart.data.datasets[0].data.push({
                             x : now,
@@ -267,20 +266,20 @@ async function UpdateConfig(){
 
 
 function TransformData(array,type,rawvalue){
-    var point1 = point2 = [];
-    point1[0] = array['low-pc-input'];
-    point1[1] = array['low-pc-input-equivalent'];
-    point2[0] = array['high-pc-input'];
-    point2[1] = array['high-pc-input-equivalent'];
-    var pcData = [point1,point2];
-    var regression = array.transformtype;
-        switch (regression){
+    var xvalues = [];
+    var yvalues = [];
+    xvalues.push(array['low-pc-input']);
+    yvalues.push(array['low-pc-input-equivalent']);
+    xvalues.push(array['high-pc-input']);
+    yvalues.push(array['high-pc-input-equivalent']);
+    var regressiontype = array.transformtype;
+        switch (regressiontype){
           case "linear":
-              const result = regression('linear',pcData);
-              return result.predict(rawvalue);
           default:
-              console.log("Please select another flower");
-              return
+              var result = linearRegression(yvalues,xvalues);
+              var value = result['slope'] * rawvalue + result['intercept'];
+              console.log(xvalues, yvalues, result['slope']);
+              return value;
       }
 }
 
@@ -294,6 +293,7 @@ $(document).ready(function() {
           var localdbkey = 'rawchannelsettings_'+data['channel-id'];
           delete data['channel-id'];
           await idbKeyval.set(localdbkey, data);
+          UpdateConfig();
   });
 });
 
@@ -304,6 +304,33 @@ $(document).on('click', '.collapse-icon', function () {
 });
 
 
+
+//Regression Functions
+
+function linearRegression(y,x){
+        var lr = {};
+        var n = y.length;
+        var sum_x = 0;
+        var sum_y = 0;
+        var sum_xy = 0;
+        var sum_xx = 0;
+        var sum_yy = 0;
+
+        for (var i = 0; i < y.length; i++) {
+
+            sum_x += x[i];
+            sum_y += y[i];
+            sum_xy += (x[i]*y[i]);
+            sum_xx += (x[i]*x[i]);
+            sum_yy += (y[i]*y[i]);
+        }
+
+        lr['slope'] = (n * sum_xy - sum_x * sum_y) / (n*sum_xx - sum_x * sum_x);
+        lr['intercept'] = (sum_y - lr.slope * sum_x)/n;
+        lr['r2'] = Math.pow((n*sum_xy - sum_x*sum_y)/Math.sqrt((n*sum_xx-sum_x*sum_x)*(n*sum_yy-sum_y*sum_y)),2);
+
+        return lr;
+}
 </script>
 
 <!-- Modals -->
