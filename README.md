@@ -6,3 +6,10 @@ A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API'
 ## Demo:
 
 ![alt text](https://github.com/nravanelli/DAQari/blob/main/images/DAQariV1.gif)
+
+Changelog (updated July 22, 2021)
+------
+
+- Draggable channel order
+- Store channel settings in browser Localdb
+- Transform inputs (linear regression)

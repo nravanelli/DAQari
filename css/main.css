@@ -35,3 +35,10 @@
 #DAQ-charts .card-body {
   padding: 0.5rem !important;
 }
+
+.error-input {
+ border:1px solid red;
+}
+.draggable-graph-div.over {
+  border: 3px dotted #666 !important;
+}

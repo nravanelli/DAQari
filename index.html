@@ -7,18 +7,18 @@
     <link href="css/fontawesome/css/all.css" rel="stylesheet">
     <link rel="stylesheet" href="css/bootstrap.min.css">
     <link rel="stylesheet" href="css/main.css">
+
     <script src="js/jquery-3.6.0.min.js"></script>
     <script src="js/bootstrap.bundle.min.js"></script>
     <script src="js/main.js"></script>
     <script lang="text/javascript" src="https://unpkg.com/simple-web-serial@latest/dist/simple-serial.min.js"></script>
-
     <script src="js/chart.min.js"></script>
     <script src="js/luxon.min.js"></script>
     <script src="js/chartjs-adapter-luxon.js"></script>
     <script src="js/chartjs-plugin-streaming.js"></script>
     <script src="js/idb-keyval.min.js"></script>
 
-    <title>DAQari V1.0</title>
+    <title>DAQari - Browser-based Serial-DAQ Solution</title>
 <script>
 
 function dontLeave() {
@@ -114,15 +114,34 @@ function dontLeave() {
         conn.on("data", function(data) {
           if(serialConnect == false){
             var channelCount = Object.keys(data).length;
-            drawGraphs(channelCount);
+            drawGraph(data,'serialChannel');
             serialConnect = true;
           }
-          window['serialdata'] = data;
+          window['serialChannel'] = data;
 
 
-          for (let index = 0; index < Object.keys(data).length; ++index) {
-            var value = data[index];
-            document.getElementById('data-channel-'+index).innerHTML = value;
+          for (var i in data) {
+            var value = data[i];
+            //lets check if there are specific settings on this channel:
+            if(ChannelconfigArray['serialChannel'] && typeof ChannelconfigArray['serialChannel'][i] !== 'undefined'){
+               if(ChannelconfigArray['serialChannel'][i]['transform'] === 'on'){
+                 value = TransformData(ChannelconfigArray['serialChannel'][i],'serial-in',value);
+               }
+               //change title if set
+               var channelName = ChannelconfigArray['serialChannel'][i]['serialChannel-Name'];
+               var currentChannelName = $('#serialChannel-'+i+'-title').text();
+               if(channelName !== currentChannelName){
+                 $('#serialChannel-'+i+'-title').text(channelName);
+               }
+               //change units if Set
+               var channelUnit = ChannelconfigArray['serialChannel'][i]['serialChannel-Unit'];
+               var currentChannelUnit = $('#serialChannel-'+i+'-unit').text();
+               if(channelName !== currentChannelName){
+                 $('#serialChannel-'+i+'-unit').text(channelUnit);
+               }
+            }
+
+            document.getElementById('serialChannel-value-'+i).innerHTML = value;
           };
 
           //save data if needed
@@ -135,6 +154,7 @@ function dontLeave() {
         })
 
       });
+
       function getTimeValue() {
         var Time = Math.floor(Date.now() / 1000)
         return Time;
@@ -146,7 +166,7 @@ function dontLeave() {
         // Get the current file size.
           const writableStream = await fileHandle.createWritable({ keepExistingData: true });
           const size = (await fileHandle.getFile()).size;
-          var dataset = window['serialdata'];
+          var dataset = window['serialChannel'];
 
           let output = time+',';
           for (var key in dataset) {
@@ -163,26 +183,28 @@ function dontLeave() {
       }
 
 
-      function channelSettingsModal(ch){
-        $('#CH-id-title').html(ch);
-        $('#channel-id').val(ch);
+      function serialChannel_SettingsModal(ch){
+        $('#serialChannel-SettingsLabel').html("Serial Channel: "+ch);
+        $('#serialChannel-id').val(ch);
         var Modal = new bootstrap.Modal(document.getElementById('ChannelSettings'));
         Modal.show();
       }
 
 
-      function drawGraphs(count){
-        for (let i = 0; i < count; i++) {
-          var graphdiv = 'ChartChannel-'+i;
+      function drawGraph(data,origin){
+
+        //lets first draw all serial inputs
+        for (const i in data) {
+          var graphdiv = origin+'-'+i;
           //Create chart div
-          var charthtml = '<div class="card mb-2"><div class="card-body"><div class="row w-100"><h6 class="card-title"> <a data-bs-toggle="collapse" href="#channelgraphdivcollapes-'+i+'" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <a class="link-secondary" role="button" onclick="channelSettingsModal('+i+')";><i class="fas fa-cog"></i></a> Channel '+i+'; <i>Value: <span id="data-channel-'+i+'"></span></i> </h6></div><div class="row w-100 collapse show" id="channelgraphdivcollapes-'+i+'"><canvas id="'+graphdiv+'" style="max-height:100px"></canvas></div></div></div>';
+          var charthtml = '<div class="card mb-2 draggable-graph-div" draggable="true"><channel-info data-channeltype="'+origin+'" data-channelid="'+i+'"/><div class="card-body"><div class="row w-100"><h6 class="card-title"> <a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+'" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+')";><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger"></span> <i>Value: <span id="'+origin+'-value-'+i+'"></span> <span id="'+origin+'-'+i+'-unit"></span></i> </h6></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphdiv+'" style="max-height:100px"></canvas></div></div></div>';
           $("#DAQ-charts").append(charthtml);
 
           //Chartjs create config
           const data = {
               datasets: [
                 {
-                  label: 'Channel '+i,
+                  label: origin+' '+i,
                   data: [],
                   borderColor: 'rgb(75, 192, 192)',
                 }
@@ -212,10 +234,10 @@ function dontLeave() {
                       onRefresh: chart => {
                           const now = Date.now();
                           // append the new data array to the existing chart data
-                          let value = window['serialdata'][i];
+                          let value = window[origin][i];
 
-                          if(ChannelconfigArray['serialdata'] && typeof ChannelconfigArray['serialdata'][i] !== 'undefined'){
-                              value = TransformData(ChannelconfigArray['serialdata'][i],'serial-in',value);
+                          if(ChannelconfigArray[origin] && typeof ChannelconfigArray[origin][i] !== 'undefined' && ChannelconfigArray[origin][i]['transform'] === 'on'){
+                              value = TransformData(ChannelconfigArray[origin][i],origin,value);
                           }
                           chart.data.datasets[0].data.push({
                             x : now,
@@ -236,9 +258,10 @@ function dontLeave() {
               }
             };
           var ctx = document.getElementById(graphdiv).getContext('2d');
-           window['RTChartChannel' + i ] = new Chart(ctx, config);
+           window[origin+'-Chartjs-' + i ] = new Chart(ctx, config);
 
         }
+        MakeDraggable();
       }
 
 async function UpdateConfig(){
@@ -247,23 +270,86 @@ async function UpdateConfig(){
     await idbKeyval.entries().then((entries) => {
       for (var i=0 , j = entries.length ; i < j ;i++){
         let item = entries[i][0];
-        console.log(entries[i][1]);
         let def = item.split('_');
-        if(def[0] == 'rawchannelsettings'){
+        if(def[0] == 'serialChannel'){
             let channel = def[1];
-            if (!ChannelconfigArray['serialdata']) ChannelconfigArray['serialdata'] = [];
-            ChannelconfigArray['serialdata'][channel] = entries[i][1];
+            console.log(item);
+            if (!ChannelconfigArray['serialChannel']) ChannelconfigArray['serialChannel'] = [];
+            ChannelconfigArray['serialChannel'][channel] = entries[i][1];
         }
-        if(def[0] == 'extrachannelsettings'){
+        if(def[0] == 'userChannel'){
             let channel = def[1];
-            if (!ChannelconfigArray['extrachannel']) ChannelconfigArray['extrachannel'] = [];
-            ChannelconfigArray['extrachannel'][channel] = entries[i][1];
+            if (!ChannelconfigArray['userChannel']) ChannelconfigArray['userChannel'] = [];
+            ChannelconfigArray['userChannel'][channel] = entries[i][1];
         }
       }
     }
   );
+      console.log(ChannelconfigArray);
 }
 
+function redrawGraph(i,origin){
+  var graphdiv = origin+'-'+i;
+  const data = {
+      datasets: [
+        {
+          label: origin+' '+i,
+          data: [],
+          borderColor: 'rgb(75, 192, 192)',
+        }
+      ]
+    };
+  const config = {
+      type: 'line',
+      data: data,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: false,
+        },
+        elements: {
+            point:{
+                radius: 0
+            }
+        },
+        scales: {
+          x: {
+            type: 'realtime',
+            realtime: {
+              duration: 20000,
+              refresh: 100,
+              delay: 100,
+              onRefresh: chart => {
+                  const now = Date.now();
+                  // append the new data array to the existing chart data
+                  let value = window[origin][i];
+
+                  if(ChannelconfigArray[origin] && typeof ChannelconfigArray[origin][i] !== 'undefined' && ChannelconfigArray[origin][i]['transform'] === 'on'){
+                      value = TransformData(ChannelconfigArray[origin][i],origin,value);
+                  }
+                  chart.data.datasets[0].data.push({
+                    x : now,
+                    y : value
+                  });
+                }
+            }
+          },
+          y: {
+            title: {
+              display: false,
+            }
+          }
+        },
+        interaction: {
+          intersect: false
+        }
+      }
+    };
+  var ctx = document.getElementById(graphdiv).getContext('2d');
+   window[origin+'-Chartjs-' + i ] = new Chart(ctx, config);
+
+}
 
 function TransformData(array,type,rawvalue){
     var xvalues = [];
@@ -278,20 +364,30 @@ function TransformData(array,type,rawvalue){
           default:
               var result = linearRegression(yvalues,xvalues);
               var value = result['slope'] * rawvalue + result['intercept'];
-              console.log(xvalues, yvalues, result['slope']);
               return value;
       }
 }
 
 $(document).ready(function() {
+  //get last used config from localdb
   UpdateConfig();
-  $('#submitChannelSettings').click(async () => {
-          var data = $('#ChannelSettings-form').serializeArray().reduce(function(obj, item) {
+
+  $('#serialChannelSettings-submit-btn').click(async () => {
+          var data = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
                         obj[item.name] = item.value;
                         return obj;
                     }, {});
-          var localdbkey = 'rawchannelsettings_'+data['channel-id'];
-          delete data['channel-id'];
+          for (var key in data){
+            if(!data[key]){
+              $('#'+key).addClass('error-input');
+              $('#rawinputsetting-submit-error').html('Error: missing data required.');
+              return;
+            }else{
+              $('#'+key).removeClass('error-input');
+            }
+          }
+          var localdbkey = 'serialChannel_'+data['serialChannel-id'];
+          delete data['serialChannel-id'];
           await idbKeyval.set(localdbkey, data);
           UpdateConfig();
   });
@@ -331,6 +427,84 @@ function linearRegression(y,x){
 
         return lr;
 }
+
+
+//draggable Graph divs
+function MakeDraggable(){
+
+      var dragSrcEl = null;
+
+      function handleDragStart(e) {
+        this.style.opacity = '0.4';
+
+        dragSrcEl = this;
+
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.innerHTML);
+      }
+
+      function handleDragOver(e) {
+        if (e.preventDefault) {
+          e.preventDefault();
+        }
+
+        e.dataTransfer.dropEffect = 'move';
+
+        return false;
+      }
+
+      function handleDragEnter(e) {
+        this.classList.add('over');
+      }
+
+      function handleDragLeave(e) {
+        this.classList.remove('over');
+      }
+
+      function handleDrop(e) {
+        if (e.stopPropagation) {
+          e.stopPropagation(); // stops the browser from redirecting.
+        }
+        if (dragSrcEl != this) {
+          //store chart channel info to redraw them
+          let graph1type = $(dragSrcEl).children('channel-info').data('channeltype');
+          let graph1id = $(dragSrcEl).children('channel-info').data('channelid');
+          let graph2type = $(this).children('channel-info').data('channeltype');
+          let graph2id = $(this).children('channel-info').data('channelid');
+          dragSrcEl.innerHTML = this.innerHTML;
+          this.innerHTML = e.dataTransfer.getData('text/html');
+
+          //destroy and redraw in new div
+          window[graph1type+'-Chartjs-' + graph1id ].destroy();
+          window[graph2type+'-Chartjs-' + graph2id ].destroy();
+          redrawGraph(graph1id,graph1type);
+          redrawGraph(graph2id,graph2type);
+        }
+
+        return false;
+      }
+
+      function handleDragEnd(e) {
+        this.style.opacity = '1';
+
+        items.forEach(function (item) {
+          item.classList.remove('over');
+        });
+      }
+
+
+      let items = document.querySelectorAll('#DAQ-charts .draggable-graph-div');
+
+      items.forEach(function(item) {
+        item.addEventListener('dragstart', handleDragStart, false);
+        item.addEventListener('dragenter', handleDragEnter, false);
+        item.addEventListener('dragover', handleDragOver, false);
+        item.addEventListener('dragleave', handleDragLeave, false);
+        item.addEventListener('drop', handleDrop, false);
+        item.addEventListener('dragend', handleDragEnd, false);
+      });
+}
+
 </script>
 
 <!-- Modals -->
@@ -338,17 +512,17 @@ function linearRegression(y,x){
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="ChannelSettingsLabel">Channel <span id="CH-id-title"></span></h5>
+        <h5 class="modal-title" id="serialChannel-SettingsLabel"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
 
-        <form id="ChannelSettings-form">
-          <input type="hidden" id="channel-id" name="channel-id" value="">
+        <form id="serialChannel-Settings-form">
+          <input type="hidden" id="serialChannel-id" name="serialChannel-id" value="">
 
           <div class="mb-3">
             <label for="channelName" class="form-label">Channel Name:</label>
-            <input type="text" class="form-control" id="channelName" placeholder="Humidity" name="channelName">
+            <input type="text" class="form-control" id="serialChannel-Name" placeholder="Humidity" name="serialChannel-Name">
           </div>
 
           <label for="low-pc-input" class="form-label">Point Calibration (Low):</label>
@@ -370,7 +544,7 @@ function linearRegression(y,x){
 
           <div class="mb-3">
             <label for="channelUnit" class="form-label">Channel Units:</label>
-            <input type="text" class="form-control" id="channelUnit" placeholder="%RH" name="channelUnit">
+            <input type="text" class="form-control" id="channelUnit" placeholder="%RH" name="serialChannel-Unit">
           </div>
 
           <div class="form-check form-switch">
@@ -389,7 +563,8 @@ function linearRegression(y,x){
 
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-primary" id="submitChannelSettings" data-bs-dismiss="modal">Save changes</button>
+        <span class="text-danger" id="rawinputsetting-submit-error"></span>
+        <button type="button" class="btn btn-primary" id="serialChannelSettings-submit-btn">Save changes</button>
       </div>
     </div>
   </div>
