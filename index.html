@@ -11,12 +11,14 @@
     <script src="js/jquery-3.6.0.min.js"></script>
     <script src="js/bootstrap.bundle.min.js"></script>
     <script src="js/main.js"></script>
-    <script lang="text/javascript" src="https://unpkg.com/simple-web-serial@latest/dist/simple-serial.min.js"></script>
+    <script src="js/simple-serial.min.js"></script>
     <script src="js/chart.min.js"></script>
     <script src="js/luxon.min.js"></script>
     <script src="js/chartjs-adapter-luxon.js"></script>
     <script src="js/chartjs-plugin-streaming.js"></script>
     <script src="js/idb-keyval.min.js"></script>
+    <script src="js/exprEval.bundle.min.js"></script>
+    <script src="js/jquery-ui.min.js"></script>
 
     <title>DAQari - Browser-based Serial-DAQ Solution</title>
 <script>
@@ -31,39 +33,53 @@ function dontLeave() {
         <div class="card">
           <div class="card-body">
             <div class="row">
-              <div class="col-md-6">
+              <div class="col-md-2">
                 <h3 class="card-title"><img src="images/logo.svg" style="height: 1.75rem;"></img> DAQari</h3>
                 <h6 class="card-subtitle mb-2 text-muted">Browser-based data acquisition</h6>
-                <button class="btn btn-success btn-lg m-1 mb-4 mx-auto" id="connectButton"><i class="fas fa-plug"></i> Connect</button>
                 <h6 class="card-subtitle mb-2 text-muted"><i class="far fa-copyright"></i> Nicholas Ravanelli, PhD</h6>
               </div>
-              <div class="col-md-6">
+              <div class="col-md-6 text-center">
+                <button class="btn btn-success m-2" id="serialConnect-btn"><i class="fas fa-plug"></i> Connect</button>
+                <button class="btn btn-secondary m-2" id="LoadConfig-btn" disabled><i class="fas fa-upload"></i> Upload Config</button>
+                <button class="btn btn-danger m-2" id="addUserChannel-btn" onclick="userChannel_SettingsModal();"><i class="fas fa-plus"></i> Custom Channel</button>
+              </div>
+              <div class="col-md-4">
                 <div class="input-group mb-3" id="filename-input">
                   <input type="text" class="form-control form-control-sm" id="file-name-text" placeholder="Create file...">
                   <span class="input-group-text" id="file-url-icon"><i class="fas fa-file-medical-alt"></i></span>
                 </div>
-                <div class="input-group mb-3 w-50">
-                  <input type="number" step="1" class="form-control form-control-sm logdata-settings" placeholder="Saving interval (default is 5 sec)" id="datalogInterval">
-                  <span class="input-group-text" id="secondsinput-unit">seconds</span>
-                </div>
                 <div class="input-group mb-3">
-                  <span class="input-group-text" id="basic-addon1">Insert Comment:</span>
-                  <textarea class="form-control form-control-sm logdata-settings" placeholder="Comment"></textarea>
-                  <button class="btn btn-outline-secondary" type="button" id="submitComment">Submit</button>
+                  <span class="input-group-text" id="basic-addon1">File Comment:</span>
+                  <input type="text" class="form-control form-control-sm logdata-settings" placeholder="..."></input>
+                  <button class="btn btn-outline-secondary" type="button" id="submitComment-btn">Submit</button>
                 </div>
-                <div class="form-check form-switch w-100">
-                  <input class="form-check-input logdata-settings" type="checkbox" id="LogdataSwitch" disabled>
-                  <label class="form-check-label" for="Logdata">Save data</label>
+                <div class="row">
+                  <div class="col-md-4">
+                    <div class="form-check form-switch w-100">
+                      <input class="form-check-input logdata-settings" type="checkbox" id="LogdataSwitch" disabled>
+                      <label class="form-check-label" for="Logdata">Save data</label>
+                    </div>
+                  </div>
+                  <div class="col-md-8">
+                    <div class="input-group mb-3">
+                      <span class="input-group-text">Log every</span>
+                      <input type="number" step="1" class="form-control form-control-sm logdata-settings" style="text-align: right;" placeholder="5" id="datalogInterval">
+                      <span class="input-group-text" id="secondsinput-unit">seconds</span>
+                    </div>
+                  </div>
                 </div>
               </div>
           </div>
         </div>
       </div>
 
-        <div id="DAQ-charts" class="mt-2"></div>
+        <div id="DAQ-charts" class="mt-2">
+          <div style="visible:hidden;" draggable="true"></div>
+        </div>
 
       </div>
     <script>
+
     // Global variables
     let fileHandle;
     let recordingData = false;
@@ -104,18 +120,31 @@ function dontLeave() {
 
 
     var serialConnect = false;
-      $('#connectButton').click(function(){
+      $('#serialConnect-btn').click(function(){
 
         const conn = SimpleSerial.connect({
-            requestButton: 'connectButton'
+            requestButton: 'serialConnect-btn'
           });
 
 
         conn.on("data", function(data) {
           if(serialConnect == false){
-            var channelCount = Object.keys(data).length;
-            drawGraph(data,'serialChannel');
+
+            //first connection so lets draw all the graphs
+            if(typeof ChannelconfigArray['channelOrder'] !== 'undefined' ){
+              for (let channel of ChannelconfigArray['channelOrder']) {
+                    var items = channel.split('-');
+                    drawGraph(items[2],items[1],true);
+                }
+            }else{
+              for(var i in data){
+                console.log(i);
+                drawGraph(i,'serialChannel',true);
+              }
+            }
+
             serialConnect = true;
+            //MakeDraggable();
           }
           window['serialChannel'] = data;
 
@@ -140,8 +169,10 @@ function dontLeave() {
                  $('#serialChannel-'+i+'-unit').text(channelUnit);
                }
             }
+            if(document.getElementById('serialChannel-value-'+i)){
+              document.getElementById('serialChannel-value-'+i).innerHTML = value;
+            }
 
-            document.getElementById('serialChannel-value-'+i).innerHTML = value;
           };
 
           //save data if needed
@@ -186,19 +217,27 @@ function dontLeave() {
       function serialChannel_SettingsModal(ch){
         $('#serialChannel-SettingsLabel').html("Serial Channel: "+ch);
         $('#serialChannel-id').val(ch);
-        var Modal = new bootstrap.Modal(document.getElementById('ChannelSettings'));
+        var Modal = new bootstrap.Modal(document.getElementById('serialChannel_Settings'));
+        Modal.show();
+      }
+
+      function userChannel_SettingsModal(ch){
+        if(!ch){
+          $('#userChannel-SettingsLabel').html("New Channel");
+        }
+        var Modal = new bootstrap.Modal(document.getElementById('userChannel_Settings'));
         Modal.show();
       }
 
 
-      function drawGraph(data,origin){
+      function drawGraph(i,origin,divcreate){
 
-        //lets first draw all serial inputs
-        for (const i in data) {
-          var graphdiv = origin+'-'+i;
-          //Create chart div
-          var charthtml = '<div class="card mb-2 draggable-graph-div" draggable="true"><channel-info data-channeltype="'+origin+'" data-channelid="'+i+'"/><div class="card-body"><div class="row w-100"><h6 class="card-title"> <a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+'" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+')";><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger"></span> <i>Value: <span id="'+origin+'-value-'+i+'"></span> <span id="'+origin+'-'+i+'-unit"></span></i> </h6></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphdiv+'" style="max-height:100px"></canvas></div></div></div>';
-          $("#DAQ-charts").append(charthtml);
+          var graphcanvasid = 'canvas-'+origin+'-'+i;
+          var graphdiv = 'channelParentdiv-'+origin+'-'+i;
+          if(divcreate){
+            var charthtml = '<div class="card mb-2 draggable-graph-div" id="'+graphdiv+'"><div class="card-body"><div class="row w-100"><h6 class="card-title"> <a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+'" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <i class="fas fa-arrows-alt draggable-icon"></i> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+');"><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger"></span> <i>Value: <span id="'+origin+'-value-'+i+'"></span> <span id="'+origin+'-'+i+'-unit"></span></i> </h6></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphcanvasid+'" style="max-height:100px"></canvas></div></div></div>';
+            $("#DAQ-charts").append(charthtml);
+            }
 
           //Chartjs create config
           const data = {
@@ -257,11 +296,11 @@ function dontLeave() {
                 }
               }
             };
-          var ctx = document.getElementById(graphdiv).getContext('2d');
-           window[origin+'-Chartjs-' + i ] = new Chart(ctx, config);
-
-        }
-        MakeDraggable();
+          var ctx = document.getElementById(graphcanvasid).getContext('2d');
+          window[origin+'-Chartjs-' + i ] = new Chart(ctx, config);
+          if(divcreate){
+          $('#DAQ-charts').sortable('refresh');
+          }
       }
 
 async function UpdateConfig(){
@@ -273,7 +312,6 @@ async function UpdateConfig(){
         let def = item.split('_');
         if(def[0] == 'serialChannel'){
             let channel = def[1];
-            console.log(item);
             if (!ChannelconfigArray['serialChannel']) ChannelconfigArray['serialChannel'] = [];
             ChannelconfigArray['serialChannel'][channel] = entries[i][1];
         }
@@ -282,73 +320,18 @@ async function UpdateConfig(){
             if (!ChannelconfigArray['userChannel']) ChannelconfigArray['userChannel'] = [];
             ChannelconfigArray['userChannel'][channel] = entries[i][1];
         }
+        if(def[0] == 'channelOrder'){
+          if (!ChannelconfigArray['channelOrder']) ChannelconfigArray['channelOrder'] = [];
+          ChannelconfigArray['channelOrder'] = entries[i][1];
+        }
       }
     }
   );
-      console.log(ChannelconfigArray);
+  console.log(ChannelconfigArray);
 }
 
-function redrawGraph(i,origin){
-  var graphdiv = origin+'-'+i;
-  const data = {
-      datasets: [
-        {
-          label: origin+' '+i,
-          data: [],
-          borderColor: 'rgb(75, 192, 192)',
-        }
-      ]
-    };
-  const config = {
-      type: 'line',
-      data: data,
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: false,
-        },
-        elements: {
-            point:{
-                radius: 0
-            }
-        },
-        scales: {
-          x: {
-            type: 'realtime',
-            realtime: {
-              duration: 20000,
-              refresh: 100,
-              delay: 100,
-              onRefresh: chart => {
-                  const now = Date.now();
-                  // append the new data array to the existing chart data
-                  let value = window[origin][i];
-
-                  if(ChannelconfigArray[origin] && typeof ChannelconfigArray[origin][i] !== 'undefined' && ChannelconfigArray[origin][i]['transform'] === 'on'){
-                      value = TransformData(ChannelconfigArray[origin][i],origin,value);
-                  }
-                  chart.data.datasets[0].data.push({
-                    x : now,
-                    y : value
-                  });
-                }
-            }
-          },
-          y: {
-            title: {
-              display: false,
-            }
-          }
-        },
-        interaction: {
-          intersect: false
-        }
-      }
-    };
-  var ctx = document.getElementById(graphdiv).getContext('2d');
-   window[origin+'-Chartjs-' + i ] = new Chart(ctx, config);
-
+async function updateDBkey(key,data){
+  await idbKeyval.set(key, data);
 }
 
 function TransformData(array,type,rawvalue){
@@ -380,7 +363,7 @@ $(document).ready(function() {
           for (var key in data){
             if(!data[key]){
               $('#'+key).addClass('error-input');
-              $('#rawinputsetting-submit-error').html('Error: missing data required.');
+              $('#serialChannelsetting-submit-error').html('Error: missing data required.');
               return;
             }else{
               $('#'+key).removeClass('error-input');
@@ -391,6 +374,36 @@ $(document).ready(function() {
           await idbKeyval.set(localdbkey, data);
           UpdateConfig();
   });
+
+  $('#userChannelSettings-submit-btn').click(async () => {
+          var data = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
+                        obj[item.name] = item.value;
+                        return obj;
+                    }, {});
+          for (var key in data){
+            if(!data[key]){
+              $('#'+key).addClass('error-input');
+              $('#userChannelsetting-submit-error').html('Error: missing data required.');
+              return;
+            }else{
+              $('#'+key).removeClass('error-input');
+            }
+          }
+          var localdbkey = 'userChannel_'+data['userChannel-id'];
+          delete data['userChannel-id'];
+          await idbKeyval.set(localdbkey, data);
+          UpdateConfig();
+  });
+
+  $('#DAQ-charts').sortable({
+    items: ".draggable-graph-div",
+    handle: ".draggable-icon",
+    update: function (event, ui) {
+        var data = $(this).sortable('toArray');
+        updateDBkey('channelOrder',data);
+      }
+  });
+
 });
 
 
@@ -429,86 +442,10 @@ function linearRegression(y,x){
 }
 
 
-//draggable Graph divs
-function MakeDraggable(){
-
-      var dragSrcEl = null;
-
-      function handleDragStart(e) {
-        this.style.opacity = '0.4';
-
-        dragSrcEl = this;
-
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/html', this.innerHTML);
-      }
-
-      function handleDragOver(e) {
-        if (e.preventDefault) {
-          e.preventDefault();
-        }
-
-        e.dataTransfer.dropEffect = 'move';
-
-        return false;
-      }
-
-      function handleDragEnter(e) {
-        this.classList.add('over');
-      }
-
-      function handleDragLeave(e) {
-        this.classList.remove('over');
-      }
-
-      function handleDrop(e) {
-        if (e.stopPropagation) {
-          e.stopPropagation(); // stops the browser from redirecting.
-        }
-        if (dragSrcEl != this) {
-          //store chart channel info to redraw them
-          let graph1type = $(dragSrcEl).children('channel-info').data('channeltype');
-          let graph1id = $(dragSrcEl).children('channel-info').data('channelid');
-          let graph2type = $(this).children('channel-info').data('channeltype');
-          let graph2id = $(this).children('channel-info').data('channelid');
-          dragSrcEl.innerHTML = this.innerHTML;
-          this.innerHTML = e.dataTransfer.getData('text/html');
-
-          //destroy and redraw in new div
-          window[graph1type+'-Chartjs-' + graph1id ].destroy();
-          window[graph2type+'-Chartjs-' + graph2id ].destroy();
-          redrawGraph(graph1id,graph1type);
-          redrawGraph(graph2id,graph2type);
-        }
-
-        return false;
-      }
-
-      function handleDragEnd(e) {
-        this.style.opacity = '1';
-
-        items.forEach(function (item) {
-          item.classList.remove('over');
-        });
-      }
-
-
-      let items = document.querySelectorAll('#DAQ-charts .draggable-graph-div');
-
-      items.forEach(function(item) {
-        item.addEventListener('dragstart', handleDragStart, false);
-        item.addEventListener('dragenter', handleDragEnter, false);
-        item.addEventListener('dragover', handleDragOver, false);
-        item.addEventListener('dragleave', handleDragLeave, false);
-        item.addEventListener('drop', handleDrop, false);
-        item.addEventListener('dragend', handleDragEnd, false);
-      });
-}
-
 </script>
 
 <!-- Modals -->
-<div class="modal fade" id="ChannelSettings" tabindex="-1">
+<div class="modal fade" id="serialChannel_Settings" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
@@ -563,8 +500,47 @@ function MakeDraggable(){
 
       </div>
       <div class="modal-footer">
-        <span class="text-danger" id="rawinputsetting-submit-error"></span>
+        <span class="text-danger" id="serialChannelsetting-submit-error"></span>
         <button type="button" class="btn btn-primary" id="serialChannelSettings-submit-btn">Save changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade" id="userChannel_Settings" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="userChannel-SettingsLabel"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Advanced Users Only!</p>
+        <form id="userChannel-Settings-form">
+          <input type="hidden" id="userChannel-id" name="userChannel-id" value="">
+
+          <div class="mb-3">
+            <label for="userChannel-Name" class="form-label">Channel Name:</label>
+            <input type="text" class="form-control" id="userChannel-Name" placeholder="Humidity" name="userChannel-Name">
+          </div>
+
+          <div class="mb-3">
+            <label for="userChannel-equation" class="form-label">Equation:</label>
+            <input type="text" class="form-control" id="userChannel-equation" placeholder="Humidity" name="userChannel-equation">
+          </div>
+
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="userChannel-LogData" name="userChannel-LogData">
+            <label class="form-check-label" for="userChannel-LogData">Log Data</label>
+          </div>
+
+        </form>
+
+      </div>
+      <div class="modal-footer">
+        <span class="text-danger" id="userChannelsetting-submit-error"></span>
+        <button type="button" class="btn btn-primary" id="userChannelSettings-submit-btn">Save changes</button>
       </div>
     </div>
   </div>
