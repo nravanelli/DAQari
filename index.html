@@ -10,7 +10,6 @@
 
     <script src="js/jquery-3.6.0.min.js"></script>
     <script src="js/bootstrap.bundle.min.js"></script>
-    <script src="js/main.js"></script>
     <script src="js/simple-serial.min.js"></script>
     <script src="js/chart.min.js"></script>
     <script src="js/luxon.min.js"></script>
@@ -19,6 +18,8 @@
     <script src="js/idb-keyval.min.js"></script>
     <script src="js/exprEval.bundle.min.js"></script>
     <script src="js/jquery-ui.min.js"></script>
+
+    <script src="js/main.js"></script>
 
     <title>DAQari - Browser-based Serial-DAQ Solution</title>
 <script>
@@ -41,6 +42,7 @@ function dontLeave() {
               <div class="col-md-6 text-center">
                 <button class="btn btn-success m-2" id="serialConnect-btn"><i class="fas fa-plug"></i> Connect</button>
                 <button class="btn btn-secondary m-2" id="LoadConfig-btn" disabled><i class="fas fa-upload"></i> Upload Config</button>
+                <button class="btn btn-warning m-2" id="ClearConfig-btn"><i class="far fa-trash-alt"></i> Clear Config</button>
                 <button class="btn btn-danger m-2" id="addUserChannel-btn" onclick="userChannel_SettingsModal();"><i class="fas fa-plus"></i> Custom Channel</button>
               </div>
               <div class="col-md-4">
@@ -74,375 +76,9 @@ function dontLeave() {
       </div>
 
         <div id="DAQ-charts" class="mt-2">
-          <div style="visible:hidden;" draggable="true"></div>
         </div>
 
       </div>
-    <script>
-
-    // Global variables
-    let fileHandle;
-    let recordingData = false;
-    let lastloggedDate = 0;
-    let ChannelconfigArray = [];
-
-    $("#LogdataSwitch").change(function(){
-        if ($(this).is(':checked')){
-          recordingData = true;
-        }else{
-          recordingData = false;
-        }
-      });
-
-    $('#filename-input').click(async () => {
-      try {
-      var date = new Date().toISOString();
-      var filenamesuggest = 'DAQari_'+date+'.txt';
-              const options = {
-                suggestedName: filenamesuggest,
-                types: [
-                  {
-                    description: 'Text Files',
-                    accept: {
-                      'text/plain': ['.txt'],
-                    },
-                  },
-                ],
-              };
-          fileHandle = await window.showSaveFilePicker(options);
-          await idbKeyval.set("datalogfile", fileHandle);
-          $('#file-name-text').val(fileHandle.name);
-          $('.logdata-settings').prop("disabled", false);
-        } catch (error) {
-          console.log(error.name, error.message);
-        }
-    });
-
-
-    var serialConnect = false;
-      $('#serialConnect-btn').click(function(){
-
-        const conn = SimpleSerial.connect({
-            requestButton: 'serialConnect-btn'
-          });
-
-
-        conn.on("data", function(data) {
-          if(serialConnect == false){
-
-            //first connection so lets draw all the graphs
-            if(typeof ChannelconfigArray['channelOrder'] !== 'undefined' ){
-              for (let channel of ChannelconfigArray['channelOrder']) {
-                    var items = channel.split('-');
-                    drawGraph(items[2],items[1],true);
-                }
-            }else{
-              for(var i in data){
-                console.log(i);
-                drawGraph(i,'serialChannel',true);
-              }
-            }
-
-            serialConnect = true;
-            //MakeDraggable();
-          }
-          window['serialChannel'] = data;
-
-
-          for (var i in data) {
-            var value = data[i];
-            //lets check if there are specific settings on this channel:
-            if(ChannelconfigArray['serialChannel'] && typeof ChannelconfigArray['serialChannel'][i] !== 'undefined'){
-               if(ChannelconfigArray['serialChannel'][i]['transform'] === 'on'){
-                 value = TransformData(ChannelconfigArray['serialChannel'][i],'serial-in',value);
-               }
-               //change title if set
-               var channelName = ChannelconfigArray['serialChannel'][i]['serialChannel-Name'];
-               var currentChannelName = $('#serialChannel-'+i+'-title').text();
-               if(channelName !== currentChannelName){
-                 $('#serialChannel-'+i+'-title').text(channelName);
-               }
-               //change units if Set
-               var channelUnit = ChannelconfigArray['serialChannel'][i]['serialChannel-Unit'];
-               var currentChannelUnit = $('#serialChannel-'+i+'-unit').text();
-               if(channelName !== currentChannelName){
-                 $('#serialChannel-'+i+'-unit').text(channelUnit);
-               }
-            }
-            if(document.getElementById('serialChannel-value-'+i)){
-              document.getElementById('serialChannel-value-'+i).innerHTML = value;
-            }
-
-          };
-
-          //save data if needed
-          let timenow = getTimeValue();
-          let interval = $("#datalogInterval").val();
-            if(!interval){ interval = 5;}
-          if((timenow - lastloggedDate) >= interval && recordingData){
-                      saveData(timenow);
-          }
-        })
-
-      });
-
-      function getTimeValue() {
-        var Time = Math.floor(Date.now() / 1000)
-        return Time;
-      }
-
-      async function saveData(time) {
-        lastloggedDate = time;
-        //write to datalog file
-        // Get the current file size.
-          const writableStream = await fileHandle.createWritable({ keepExistingData: true });
-          const size = (await fileHandle.getFile()).size;
-          var dataset = window['serialChannel'];
-
-          let output = time+',';
-          for (var key in dataset) {
-              output += dataset[key]+',';
-          }
-
-          await writableStream.write({
-            type: "write",
-            data: output+" \r\n",
-            position: size,
-          });
-          await writableStream.close();
-
-      }
-
-
-      function serialChannel_SettingsModal(ch){
-        $('#serialChannel-SettingsLabel').html("Serial Channel: "+ch);
-        $('#serialChannel-id').val(ch);
-        var Modal = new bootstrap.Modal(document.getElementById('serialChannel_Settings'));
-        Modal.show();
-      }
-
-      function userChannel_SettingsModal(ch){
-        if(!ch){
-          $('#userChannel-SettingsLabel').html("New Channel");
-        }
-        var Modal = new bootstrap.Modal(document.getElementById('userChannel_Settings'));
-        Modal.show();
-      }
-
-
-      function drawGraph(i,origin,divcreate){
-
-          var graphcanvasid = 'canvas-'+origin+'-'+i;
-          var graphdiv = 'channelParentdiv-'+origin+'-'+i;
-          if(divcreate){
-            var charthtml = '<div class="card mb-2 draggable-graph-div" id="'+graphdiv+'"><div class="card-body"><div class="row w-100"><h6 class="card-title"> <a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+'" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <i class="fas fa-arrows-alt draggable-icon"></i> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+');"><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger"></span> <i>Value: <span id="'+origin+'-value-'+i+'"></span> <span id="'+origin+'-'+i+'-unit"></span></i> </h6></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphcanvasid+'" style="max-height:100px"></canvas></div></div></div>';
-            $("#DAQ-charts").append(charthtml);
-            }
-
-          //Chartjs create config
-          const data = {
-              datasets: [
-                {
-                  label: origin+' '+i,
-                  data: [],
-                  borderColor: 'rgb(75, 192, 192)',
-                }
-              ]
-            };
-          const config = {
-              type: 'line',
-              data: data,
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: false,
-                },
-                elements: {
-                    point:{
-                        radius: 0
-                    }
-                },
-                scales: {
-                  x: {
-                    type: 'realtime',
-                    realtime: {
-                      duration: 20000,
-                      refresh: 100,
-                      delay: 100,
-                      onRefresh: chart => {
-                          const now = Date.now();
-                          // append the new data array to the existing chart data
-                          let value = window[origin][i];
-
-                          if(ChannelconfigArray[origin] && typeof ChannelconfigArray[origin][i] !== 'undefined' && ChannelconfigArray[origin][i]['transform'] === 'on'){
-                              value = TransformData(ChannelconfigArray[origin][i],origin,value);
-                          }
-                          chart.data.datasets[0].data.push({
-                            x : now,
-                            y : value
-                          });
-                        }
-                    }
-                  },
-                  y: {
-                    title: {
-                      display: false,
-                    }
-                  }
-                },
-                interaction: {
-                  intersect: false
-                }
-              }
-            };
-          var ctx = document.getElementById(graphcanvasid).getContext('2d');
-          window[origin+'-Chartjs-' + i ] = new Chart(ctx, config);
-          if(divcreate){
-          $('#DAQ-charts').sortable('refresh');
-          }
-      }
-
-async function UpdateConfig(){
-  //clear Global config array and rewrite with all setting data from localdb
-  ChannelconfigArray = [];
-    await idbKeyval.entries().then((entries) => {
-      for (var i=0 , j = entries.length ; i < j ;i++){
-        let item = entries[i][0];
-        let def = item.split('_');
-        if(def[0] == 'serialChannel'){
-            let channel = def[1];
-            if (!ChannelconfigArray['serialChannel']) ChannelconfigArray['serialChannel'] = [];
-            ChannelconfigArray['serialChannel'][channel] = entries[i][1];
-        }
-        if(def[0] == 'userChannel'){
-            let channel = def[1];
-            if (!ChannelconfigArray['userChannel']) ChannelconfigArray['userChannel'] = [];
-            ChannelconfigArray['userChannel'][channel] = entries[i][1];
-        }
-        if(def[0] == 'channelOrder'){
-          if (!ChannelconfigArray['channelOrder']) ChannelconfigArray['channelOrder'] = [];
-          ChannelconfigArray['channelOrder'] = entries[i][1];
-        }
-      }
-    }
-  );
-  console.log(ChannelconfigArray);
-}
-
-async function updateDBkey(key,data){
-  await idbKeyval.set(key, data);
-}
-
-function TransformData(array,type,rawvalue){
-    var xvalues = [];
-    var yvalues = [];
-    xvalues.push(array['low-pc-input']);
-    yvalues.push(array['low-pc-input-equivalent']);
-    xvalues.push(array['high-pc-input']);
-    yvalues.push(array['high-pc-input-equivalent']);
-    var regressiontype = array.transformtype;
-        switch (regressiontype){
-          case "linear":
-          default:
-              var result = linearRegression(yvalues,xvalues);
-              var value = result['slope'] * rawvalue + result['intercept'];
-              return value;
-      }
-}
-
-$(document).ready(function() {
-  //get last used config from localdb
-  UpdateConfig();
-
-  $('#serialChannelSettings-submit-btn').click(async () => {
-          var data = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
-                        obj[item.name] = item.value;
-                        return obj;
-                    }, {});
-          for (var key in data){
-            if(!data[key]){
-              $('#'+key).addClass('error-input');
-              $('#serialChannelsetting-submit-error').html('Error: missing data required.');
-              return;
-            }else{
-              $('#'+key).removeClass('error-input');
-            }
-          }
-          var localdbkey = 'serialChannel_'+data['serialChannel-id'];
-          delete data['serialChannel-id'];
-          await idbKeyval.set(localdbkey, data);
-          UpdateConfig();
-  });
-
-  $('#userChannelSettings-submit-btn').click(async () => {
-          var data = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
-                        obj[item.name] = item.value;
-                        return obj;
-                    }, {});
-          for (var key in data){
-            if(!data[key]){
-              $('#'+key).addClass('error-input');
-              $('#userChannelsetting-submit-error').html('Error: missing data required.');
-              return;
-            }else{
-              $('#'+key).removeClass('error-input');
-            }
-          }
-          var localdbkey = 'userChannel_'+data['userChannel-id'];
-          delete data['userChannel-id'];
-          await idbKeyval.set(localdbkey, data);
-          UpdateConfig();
-  });
-
-  $('#DAQ-charts').sortable({
-    items: ".draggable-graph-div",
-    handle: ".draggable-icon",
-    update: function (event, ui) {
-        var data = $(this).sortable('toArray');
-        updateDBkey('channelOrder',data);
-      }
-  });
-
-});
-
-
-
-$(document).on('click', '.collapse-icon', function () {
-    $(this).find('i').toggleClass('fa-plus-square fa-minus-square');
-});
-
-
-
-//Regression Functions
-
-function linearRegression(y,x){
-        var lr = {};
-        var n = y.length;
-        var sum_x = 0;
-        var sum_y = 0;
-        var sum_xy = 0;
-        var sum_xx = 0;
-        var sum_yy = 0;
-
-        for (var i = 0; i < y.length; i++) {
-
-            sum_x += x[i];
-            sum_y += y[i];
-            sum_xy += (x[i]*y[i]);
-            sum_xx += (x[i]*x[i]);
-            sum_yy += (y[i]*y[i]);
-        }
-
-        lr['slope'] = (n * sum_xy - sum_x * sum_y) / (n*sum_xx - sum_x * sum_x);
-        lr['intercept'] = (sum_y - lr.slope * sum_x)/n;
-        lr['r2'] = Math.pow((n*sum_xy - sum_x*sum_y)/Math.sqrt((n*sum_xx-sum_x*sum_x)*(n*sum_yy-sum_y*sum_y)),2);
-
-        return lr;
-}
-
-
-</script>
 
 <!-- Modals -->
 <div class="modal fade" id="serialChannel_Settings" tabindex="-1">
@@ -516,7 +152,7 @@ function linearRegression(y,x){
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p>Advanced Users Only!</p>
+        <p><i>Advanced Users Only!</i></p>
         <form id="userChannel-Settings-form">
           <input type="hidden" id="userChannel-id" name="userChannel-id" value="">
 
@@ -527,7 +163,9 @@ function linearRegression(y,x){
 
           <div class="mb-3">
             <label for="userChannel-equation" class="form-label">Equation:</label>
-            <input type="text" class="form-control" id="userChannel-equation" placeholder="Humidity" name="userChannel-equation">
+            <div id="EquationHelp" class="form-text m-1"><i class="fas fa-info-circle"></i> Refer to channels in the equation with their primary names, e.g. serialChannel_3, userChannel_2 </div>
+            <input type="text" class="form-control" id="userChannel-equation-input" placeholder="Humidity" name="userChannel-equation">
+            <span id="equationError"></span>
           </div>
 
           <div class="form-check form-switch">

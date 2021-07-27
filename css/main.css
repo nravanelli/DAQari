@@ -39,6 +39,10 @@
 .error-input {
  border:1px solid red;
 }
-.draggable-graph-div.over {
-  border: 3px dotted #666 !important;
+
+.inputColor{
+  visibility: hidden;
+  width: 23px;
+  height: 23px;
+  padding: 0;
 }
