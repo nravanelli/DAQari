@@ -4,13 +4,16 @@ var EquationEval = new exprEval.Parser();
 let fileHandle;
 let recordingData = false;
 let lastloggedDate = 0;
-let ChannelconfigArray = [];
+let startRecordData = 0;
+let GlobalConfigArray = [];
 let serialConnect = false;
 let initDrawGraphs = false;
+let lastComment = '';
 
 $(document).ready(function() {
+    getConfigs();
     //get last used config from localdb
-    $.when(UpdateConfig()).then(function(){initGraphs()});
+    $.when(loadConfig(null)).then(function(){initGraphs()});
 
     $('#serialChannelSettings-submit-btn').click(async () => {
           var data = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
@@ -46,14 +49,48 @@ $(document).ready(function() {
               $('#'+key).removeClass('error-input');
             }
           }
-          var localdbkey = 'userChannel_'+data['userChannel-id'];
           let id = data['userChannel-id'];
           delete data['userChannel-id'];
-          await idbKeyval.set(localdbkey, data);
+
+          //lets check if this is the first userChannel, if not, lets create array
+          if(typeof GlobalConfigArray['userChannel'] === 'undefined'){
+            GlobalConfigArray['userChannel'] = [[]];
+          };
+          GlobalConfigArray['userChannel'][id] = [];
+          for (var key in data){
+            GlobalConfigArray['userChannel'][id][key] = data[key];
+          }
+          GlobalConfigArray['userChannel'][id]['chartConfig'] = {
+                                            lineColor : "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);}),
+                                            refreshRate : 100,
+                                            duration: 10000,
+                                            delay: 100,
+                                        };
           drawGraph(id,'userChannel',true);
           var channelOrder = $('#DAQ-charts').sortable('toArray');
           updateDBkey('channelOrder',channelOrder);
-          UpdateConfig();
+    });
+
+    $('#saveConfigModal-submit-btn').click(async () => {
+      var name = $('#saveConfig-Name-input').val();
+      if(!name){
+        $('#saveConfigModal-submit-error').html('Error: give config a name');
+        return;
+      }
+      if (/\s/.test(name)) {
+        $('#saveConfigModal-submit-error').html('Error: No spaces in name');
+        return;
+      }
+      if (name.includes("_")) {
+        $('#saveConfigModal-submit-error').html('Error: Do not use underscores in name');
+        return;
+      }
+      let key = 'SettingsConfig_'+name;
+      updateDBkey(key,GlobalConfigArray);
+      $('#saveConfigModal-submit-btn').html('<i class="far fa-check-circle"></i> Saved!');
+      var modalToggle = document.getElementById('saveConfigModal');
+      const modal = bootstrap.Modal.getInstance(modalToggle);
+      modal.hide();
 
     });
 
@@ -68,7 +105,7 @@ $(document).ready(function() {
       handle: ".draggable-icon",
       update: function (event, ui) {
           var data = $(this).sortable('toArray');
-          updateDBkey('channelOrder',data);
+          GlobalConfigArray['channelOrder'] = data;
         },
     });
 
@@ -110,105 +147,138 @@ $(document).ready(function() {
     }
     });
 
+    $('#LoadConfig-btn').click(async () => {
+      //Load saved config
+      key = $('#configSelect').val();
+      await idbKeyval.get(key).then((val) => GlobalConfigArray = val);
+    });
 
+
+    //The SERIAL CONNECT FUNCTION(S)
     $('#serialConnect-btn').click(function(){
+      let baudRate = $('#BaudrateSelect').val();
 
       const conn = SimpleSerial.connect({
-          baudRate: 57600,
+          baudRate: baudRate,
           requestAccessonPageLoad: false,
         });
 
 
       conn.on("data", function(data) {
-        if(serialConnect == false){
 
-          //first connection so lets draw all the graphs
-            if(!initDrawGraphs){
-              if(typeof ChannelconfigArray['channelOrder'] !== 'undefined' ){
-                for (let channel of ChannelconfigArray['channelOrder']) {
-                      var items = channel.split('-');
-                      drawGraph(items[2],items[1],true);
-                  }
-              }else{
-                for(var i in data){
-                  drawGraph(i,'serialChannel',true);
-                }
+        window.serialChannel = data;
+
+        for (var i in data) {
+          var value = Math.round((data[i] + Number.EPSILON) * 100) / 100;
+
+          //lets check if there are specific settings on this channel:
+          if(typeof GlobalConfigArray['serialChannel'] === 'undefined'){
+            GlobalConfigArray['serialChannel'] = [[]];
+          };
+          if(typeof GlobalConfigArray['serialChannel'][i] === 'undefined' || GlobalConfigArray['serialChannel'][i].length == 0){
+            //lets create default array since this is a new config:
+            GlobalConfigArray['serialChannel'][i] =
+            { chartConfig:
+              {
+                  lineColor : "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);}),
+                  refreshRate : 100,
+                  duration: 10000,
+                  delay: 100,
+              }
             }
 
           }
-          serialConnect = true;
-        }
-        window.serialChannel = data;
-
-
-        for (var i in data) {
-          var value = data[i];
-
-          //lets check if there are specific settings on this channel:
-          if(ChannelconfigArray['serialChannel'] && typeof ChannelconfigArray['serialChannel'][i] !== 'undefined'){
-             if(ChannelconfigArray['serialChannel'][i]['transform'] === 'on'){
-               value = TransformData(ChannelconfigArray['serialChannel'][i],'serialChannel',value);
+            if(GlobalConfigArray['serialChannel'][i]['transform'] === 'on'){
+               value = TransformData(GlobalConfigArray['serialChannel'][i],'serialChannel',value);
                if(typeof window.transformserial == 'undefined' || !(window.transformserial instanceof Array)){
                  window.transformserial = new Array();
                }
                window.transformserial[i] = value;
              }
              //change title if set
-             var channelName = ChannelconfigArray['serialChannel'][i]['serialChannel-Name'];
-             var currentChannelName = $('#serialChannel-'+i+'-title').text();
-             if(channelName !== currentChannelName){
-               $('#serialChannel-'+i+'-title').text(channelName);
+             if(GlobalConfigArray['serialChannel'][i]['serialChannel-Name']){
+               var channelName = GlobalConfigArray['serialChannel'][i]['serialChannel-Name'];
+               changeInnerHTMLbyClass('serialChannel-'+i+'-title',channelName);
              }
-             //change units if Set
-             var channelUnit = ChannelconfigArray['serialChannel'][i]['serialChannel-Unit'];
-             var currentChannelUnit = $('#serialChannel-'+i+'-unit').text();
-             if(channelName !== currentChannelName){
-               $('#serialChannel-'+i+'-unit').text(channelUnit);
+             if(GlobalConfigArray['serialChannel'][i]['serialChannel-Unit']){
+               //change units if Set
+               var channelUnit = GlobalConfigArray['serialChannel'][i]['serialChannel-Unit'];
+               changeInnerHTMLbyClass('serialChannel-'+i+'-unit',channelUnit);
              }
-          }
-          if(document.getElementById('serialChannel-value-'+i)){
-            document.getElementById('serialChannel-value-'+i).innerHTML = value;
-          }
-
+              changeInnerHTMLbyClass('serialChannel-'+i+'-value',value);
         };
 
-        //lets iterate through userChannels and update graphs/values
-        if(ChannelconfigArray['userChannel']){
+
+        if(GlobalConfigArray['userChannel'] && GlobalConfigArray['userChannel'].length > 0){
           if(typeof window.userChannel == 'undefined' || !(window.userChannel instanceof Array)){
             window.userChannel = new Array();
           }
-          var userChannels = ChannelconfigArray['userChannel']
+          var userChannels = GlobalConfigArray['userChannel'];
           for (var chNum in userChannels) {
-              window.userChannel[chNum] =  TransformData(userChannels[chNum],'userChannel',null);
-              //change title if set
-              var channelName = ChannelconfigArray['userChannel'][chNum]['userChannel-Name'];
-              var currentChannelName = $('#userChannel-'+chNum+'-title').text();
-              if(channelName !== currentChannelName){
-                $('#userChannel-'+chNum+'-title').text(channelName);
-              }
-              //change units if Set
-              var channelUnit = ChannelconfigArray['userChannel'][chNum]['userChannel-Unit'];
-              var currentChannelUnit = $('#userChannel-'+chNum+'-unit').text();
-              if(channelName !== currentChannelName){
-                $('#userChannel-'+chNum+'-unit').text(channelUnit);
-              }
 
-              if(document.getElementById('userChannel-value-'+chNum)){
-                document.getElementById('userChannel-value-'+chNum).innerHTML = window.userChannel[chNum];;
-              }
+              window.userChannel[chNum] =  TransformData(userChannels[chNum],'userChannel',null);
+              //console.log( TransformData(userChannels[chNum],'userChannel',null));
+              //change title if set
+              var channelName = GlobalConfigArray['userChannel'][chNum]['userChannel-Name'];
+              changeInnerHTMLbyClass('userChannel-'+chNum+'-title',channelName);
+              //change units if Set
+              var channelUnit = GlobalConfigArray['userChannel'][chNum]['userChannel-Unit'];
+             changeInnerHTMLbyClass('userChannel-'+chNum+'-unit',channelUnit);
+             changeInnerHTMLbyClass('userChannel-'+chNum+'-value',window.userChannel[chNum]);
             }
+          }
+
+          if(serialConnect == false){
+            //console.log(GlobalConfigArray);
+            //first connection so lets draw all the graphs
+              if(!initDrawGraphs){
+                if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
+                  for (let channel of GlobalConfigArray['channelOrder']) {
+                        var items = channel.split('-');
+                        drawGraph(items[2],items[1],true);
+                    }
+                }else{
+                  for(var i in data){
+                    drawGraph(i,'serialChannel',true);
+                  }
+              }
+              var channelorderinit = $('#DAQ-charts').sortable('toArray');
+              GlobalConfigArray['channelOrder'] = channelorderinit;
+            }
+            serialConnect = true;
+            $('#serialConnect-btn').prop("disabled", true);
           }
 
 
         //save data if needed
         let timenow = getTimeValue();
+        if(startRecordData == 0 && recordingData) { startRecordData = timenow; }
+        if(recordingData)(setRecordTime(timenow,startRecordData));
         let interval = $("#datalogInterval").val();
           if(!interval){ interval = 5;}
+
+          if(recordingData && $('#statusText').html() != 'Recording'){
+            $('#statusText').html('Recording');
+            $('#recordCircleIcon').removeClass('text-muted');
+            $('#recordCircleIcon').addClass('text-danger');
+            $('#recordCircleIcon').addClass('RecordBlink');
+          }
+          if(!recordingData && $('#statusText').html() != 'Not recording'){
+            $('#statusText').html('Not recording');
+            $('#recordCircleIcon').removeClass('text-danger');
+            $('#recordCircleIcon').addClass('text-muted');
+            $('#recordCircleIcon').removeClass('RecordBlink');
+          }
+
         if((timenow - lastloggedDate) >= interval && recordingData){
                     saveData(timenow);
         }
       })
 
+    });
+
+    $('#submitComment-btn').click(function(){
+      $('#fileComment-input').data("comment", $('#fileComment-input').val());
     });
 
     $("#LogdataSwitch").change(function(){
@@ -243,6 +313,13 @@ $(document).ready(function() {
           }
     });
 
+
+
+    $("input[name='BaudrateSelect']").on('input', function(e){
+        var selected = $(this).val();
+        $('#serialConnect-btn').prop("disabled", false);
+    });
+
 });
 
 
@@ -253,6 +330,23 @@ function getTimeValue() {
     return Time;
 }
 
+function setRecordTime(timenow,timeinit) {
+    let duration = timenow - timeinit;
+    let hour = Math.floor(duration /3600);
+    let minute = Math.floor((duration - hour*3600)/60);
+    let seconds = duration - (hour*3600 + minute*60);
+    if(hour < 10)
+      hour = "0"+hour;
+    if(minute < 10)
+      minute = "0"+minute;
+    if(seconds < 10)
+      seconds = "0"+seconds;
+    $("#recordSeconds").html(seconds);
+    $("#recordMinutes").html(minute);
+    $("#recordHours").html(hour);
+}
+
+
 async function saveData(time) {
     lastloggedDate = time;
     //write to datalog file
@@ -262,6 +356,16 @@ async function saveData(time) {
       var dataset = window['serialChannel'];
 
       let output = time+',';
+
+      //do not place new comment every time
+      let newComment = $('#fileComment-input').data("comment");
+      if(newComment){
+        output += newComment+',';
+        $('#fileComment-input').data("comment", '');
+      }else{
+        output += ',';
+      }
+
       for (var key in dataset) {
           output += dataset[key]+',';
       }
@@ -276,6 +380,7 @@ async function saveData(time) {
 }
 
 
+//Modal functions
 function serialChannel_SettingsModal(ch){
     $('#serialChannel-SettingsLabel').html("Serial Channel: "+ch);
     $('#serialChannel-id').val(ch);
@@ -286,10 +391,10 @@ function serialChannel_SettingsModal(ch){
 function userChannel_SettingsModal(ch){
     if(!ch){
       $('#userChannel-SettingsLabel').html("New Channel");
-      if (!ChannelconfigArray['userChannel']){
+      if (!GlobalConfigArray['userChannel']){
         $('#userChannel-id').val('0');
       }else{
-        let count = ChannelconfigArray['userChannel'].length;
+        let count = GlobalConfigArray['userChannel'].length;
         $('#userChannel-id').val(count);
       }
     }
@@ -297,15 +402,21 @@ function userChannel_SettingsModal(ch){
     Modal.show();
 }
 
+function saveConfigModalshow(){
+  $('#saveConfig-Name-input').val("");
+  $('#saveConfigModal-submit-btn').html('Save Config');
+  var Modal = new bootstrap.Modal(document.getElementById('saveConfigModal'));
+  Modal.show();
+}
+
 
 function drawGraph(i,origin,divcreate){
-
       var graphcanvasid = 'canvas-'+origin+'-'+i;
       var graphdiv = 'channelParentdiv-'+origin+'-'+i;
-      var linecolor = "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);});
+      var linecolor = GlobalConfigArray[origin][i]['chartConfig']['lineColor'];
       var chartObject = origin+'-Chartjs-' + i;
       if(divcreate){
-        var charthtml = '<div class="card mb-2 draggable-graph-div" id="'+graphdiv+'"><div class="card-body"><div class="row w-100"><div class="h6 card-title d-flex"><div class="col-md-6"><a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+',#'+origin+'-'+i+'-chartSettingsdiv" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <i class="fas fa-arrows-alt draggable-icon"></i> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+');"><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger"></span> <i>Value: <span id="'+origin+'-value-'+i+'"></span> <span id="'+origin+'-'+i+'-unit"></span></i></div><div class="col-md-6 d-flex flex-md-row-reverse"><div class="float-right collapse show" id="'+origin+'-'+i+'-chartSettingsdiv">Chart Options: <label id="lineColor-'+origin+'-'+i+'-label" class="fas fa-eye-dropper" style="color: '+linecolor+';"><input type="color" class="inputColor" id="lineColor-'+origin+'-'+i+'" value="'+linecolor+'" oninput="chartLineColorChange(this,\''+chartObject+'\');"/></label></div></div></div></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphcanvasid+'" style="max-height:100px"></canvas></div></div></div>';
+        var charthtml = '<div class="card mb-2 draggable-graph-div" id="'+graphdiv+'"><div class="card-body"><div class="row w-100"><div class="h6 card-title d-flex"><div class="col-md-6"><a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+',#'+origin+'-'+i+'-chartSettingsdiv" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <i class="fas fa-arrows-alt draggable-icon"></i> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+');"><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger '+origin+'-'+i+'-title"></span> <i>Value: <span id="'+origin+'-'+i+'-value" class="'+origin+'-'+i+'-value"></span> <span id="'+origin+'-'+i+'-unit" class="'+origin+'-'+i+'-unit"></span></i></div><div class="col-md-6 d-flex flex-md-row-reverse"><div class="float-right collapse show" id="'+origin+'-'+i+'-chartSettingsdiv">Chart Options: <label id="lineColor-'+origin+'-'+i+'-label" class="fas fa-eye-dropper" style="color: '+linecolor+';"><input type="color" class="inputColor" id="lineColor-'+origin+'-'+i+'" value="'+linecolor+'" data-origin="'+origin+'" data-id="'+i+'" oninput="chartLineColorChange(this,\''+chartObject+'\');"/></label></div></div></div></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphcanvasid+'" style="max-height:100px"></canvas></div></div></div>';
         $("#DAQ-charts").append(charthtml);
         }
 
@@ -340,16 +451,18 @@ function drawGraph(i,origin,divcreate){
                 realtime: {
                   duration: 10000,
                   refresh: 100,
-                  delay: 100,
+                  delay: 2000,
                   frameRate: 30,
 
                   onRefresh: chart => {
                       const now = Date.now();
                       let value = 0;
                       if(serialConnect == true){
-                        value = window[origin][i];
-                        if(ChannelconfigArray[origin] && typeof ChannelconfigArray[origin][i] !== 'undefined'){
-                          if(ChannelconfigArray[origin][i]['transform'] === 'on'){
+                        if(window[origin][i]){
+                          value = window[origin][i];
+                        }
+                        if(GlobalConfigArray[origin] && typeof GlobalConfigArray[origin][i] !== 'undefined'){
+                          if(GlobalConfigArray[origin][i]['transform'] === 'on'){
                             value = window.transformserial[i];
                           }
                         }
@@ -360,7 +473,7 @@ function drawGraph(i,origin,divcreate){
                         y : value
                       });
                     }
-                }
+                },
               },
               y: {
                 title: {
@@ -380,37 +493,42 @@ function drawGraph(i,origin,divcreate){
       }
 }
 
-async function UpdateConfig(){
-    ChannelconfigArray_new = [];
-    await idbKeyval.entries().then((entries) => {
-      for (var i=0 , j = entries.length ; i < j ;i++){
-        let item = entries[i][0];
-        let def = item.split('_');
-        if(def[0] == 'serialChannel'){
-            let channel = def[1];
-            if (!ChannelconfigArray_new['serialChannel']) ChannelconfigArray_new['serialChannel'] = [];
-            ChannelconfigArray_new['serialChannel'][channel] = entries[i][1];
-        }
-        if(def[0] == 'userChannel'){
-            let channel = def[1];
-            if (!ChannelconfigArray_new['userChannel']) ChannelconfigArray_new['userChannel'] = [];
-            ChannelconfigArray_new['userChannel'][channel] = entries[i][1];
-        }
-        if(def[0] == 'channelOrder'){
-          if (!ChannelconfigArray_new['channelOrder']) ChannelconfigArray_new['channelOrder'] = [];
-          ChannelconfigArray_new['channelOrder'] = entries[i][1];
-        }
+async function getConfigs(){
+  $("#configSelect").html('<option selected disabled>Select config...</option>');
+  await idbKeyval.keys().then((keys) => {
+    for (var i=0 , j = keys.length ; i < j ;i++){
+      let item = keys[i];
+      let def = item.split('_');
+      if(def[0] == 'SettingsConfig'){
+        let name = def[1];
+        $("#configSelect").append($('<option></option>').val(keys[i]).html(name));
       }
     }
-    );
-    ChannelconfigArray = ChannelconfigArray_new;
+  });
+}
+
+async function SaveConfig(name){
+    let key = 'SettingsConfig_'+name;
+    await idbKeyval.set(key, GlobalConfigArray);
+}
+
+async function loadConfig(name){
+  if(!name){
+    //await idbKeyval.get("lastconfigLoad").then((val) =>
+      //loadConfig(val)
+    //);
+  }else{
+      await idbKeyval.get(name).then((val) =>
+        GlobalConfigArray = val
+      );
+      await idbKeyval.set("lastconfigLoad", name);
+    }
 }
 
 function initGraphs(){
-  if(typeof ChannelconfigArray['channelOrder'] !== 'undefined' ){
-    for (let channel of ChannelconfigArray['channelOrder']) {
+  if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
+    for (let channel of GlobalConfigArray['channelOrder']) {
           var items = channel.split('-');
-          console.log(items);
           drawGraph(items[2],items[1],true);
       }
       initDrawGraphs = true;
@@ -466,6 +584,17 @@ function chartLineColorChange(el,chart){
   window[chart].data.datasets[0].borderColor = color;
   document.getElementById(label).style.setProperty('color', color);
   window[chart].update();
+  GlobalConfigArray[el.dataset.origin][el.dataset.id]['chartConfig']['lineColor'] = color;
+}
+
+function changeInnerHTMLbyClass(classid,value){
+  element = document.getElementsByClassName( classid );
+
+  for (i = 0; i < element.length; i++) {
+    if(element[i].innerText != value){
+      element[i].innerText = value;
+    }
+  }
 }
 
 //Regression Functions

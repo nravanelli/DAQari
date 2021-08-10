@@ -11,6 +11,11 @@ A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API'
 
 Changelog
 ------
+__August 10, 2021__
+- Save configurations and load them
+- Added Baud rate selection
+- Delete configuration ( not fully implemented )
+
 __July 27, 2021__
 - Able to add custom channels integrating values from other predefined channels
 - Change line color for each graph

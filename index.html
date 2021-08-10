@@ -38,21 +38,74 @@ function dontLeave() {
                 <h3 class="card-title"><img src="images/logo.svg" style="height: 1.75rem;"></img> DAQari</h3>
                 <h6 class="card-subtitle mb-2 text-muted">Browser-based data acquisition</h6>
                 <h6 class="card-subtitle mb-2 text-muted"><i class="far fa-copyright"></i> Nicholas Ravanelli, PhD</h6>
+                <hr>
+                <div class="row text-center">
+                  <div class="row mx-auto">
+                    <label for="BaudrateSelect" class="form-label fw-bold">Baud rate:</label>
+                    <input class="form-control" list="BaudrateOptions" id="BaudrateSelect" name="BaudrateSelect">
+                    <datalist id="BaudrateOptions">
+                      <option value="9600">
+                      <option value="14400">
+                      <option value="19200">
+                      <option value="57600">
+                      <option value="115200">
+                      <option value="256000">
+                    </datalist>
+                </div>
+                  <div class="row mx-auto"><button class="btn btn-success mt-1" id="serialConnect-btn" disabled><i class="fas fa-plug"></i> Connect</button></div>
+                </div>
               </div>
-              <div class="col-md-6 text-center">
-                <button class="btn btn-success m-2" id="serialConnect-btn"><i class="fas fa-plug"></i> Connect</button>
-                <button class="btn btn-secondary m-2" id="LoadConfig-btn" disabled><i class="fas fa-upload"></i> Upload Config</button>
-                <button class="btn btn-warning m-2" id="ClearConfig-btn"><i class="far fa-trash-alt"></i> Clear Config</button>
-                <button class="btn btn-danger m-2" id="addUserChannel-btn" onclick="userChannel_SettingsModal();"><i class="fas fa-plus"></i> Custom Channel</button>
+              <div class="col-md-6">
+                <div class="row text-center border rounded">
+                  <div class="row w-100 m-2">
+                    <select class="form-select" id="configSelect" onChange="loadConfig(this.options[this.selectedIndex].value)">
+                      <option disabled>Select config...</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3 p-0"><button class="btn btn-success m-2" id="SaveConfig-btn" onclick="saveConfigModalshow();"><i class="fas fa-save"></i> Save Config</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-secondary m-2" id="LoadConfig-btn" disabled><i class="fas fa-upload"></i> Upload Config</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-warning m-2" id="DeleteConfig-btn"><i class="far fa-trash-alt"></i> Delete Config</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-danger m-2" id="addUserChannel-btn" onclick="userChannel_SettingsModal();"><i class="fas fa-plus"></i> Custom Channel</button></div>
+                </div>
+                <div class="row text-center border rounded mt-2">
+                  <div class="col-md-3">
+                    <div class="card w-100 m-2">
+                      <div class="card-body" id="PrimaryDataCard_1">
+                        <div class="card-title"><i class="fas fa-plus fa-lg"></i> <br> Select Channel</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="card w-100 m-2">
+                      <div class="card-body" id="LargeDataCard_2">
+                        <div class="card-title"><i class="fas fa-plus fa-lg"></i> <br> Select Channel</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="card w-100 m-2">
+                      <div class="card-body" id="LargeDataCard_3">
+                        <div class="card-title"><i class="fas fa-plus fa-lg"></i> <br> Select Channel</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="card w-100 m-2">
+                      <div class="card-body" id="LargeDataCard_4">
+                        <div class="card-title"><i class="fas fa-plus fa-lg"></i> <br> Select Channel</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="col-md-4">
-                <div class="input-group mb-3" id="filename-input">
+              <div class="col-md-4 ">
+                <div class="input-group mb-3 mt-2" id="filename-input">
                   <input type="text" class="form-control form-control-sm" id="file-name-text" placeholder="Create file...">
                   <span class="input-group-text" id="file-url-icon"><i class="fas fa-file-medical-alt"></i></span>
                 </div>
                 <div class="input-group mb-3">
                   <span class="input-group-text" id="basic-addon1">File Comment:</span>
-                  <input type="text" class="form-control form-control-sm logdata-settings" placeholder="..."></input>
+                  <input type="text" class="form-control form-control-sm logdata-settings" placeholder="..." id="fileComment-input" data-comment=""></input>
                   <button class="btn btn-outline-secondary" type="button" id="submitComment-btn">Submit</button>
                 </div>
                 <div class="row">
@@ -69,6 +122,14 @@ function dontLeave() {
                       <span class="input-group-text" id="secondsinput-unit">seconds</span>
                     </div>
                   </div>
+                </div>
+                <div class="row p-2">
+                  <div class="col-md-4">
+                  <div><i id="recordCircleIcon" class="fa fa-circle text-muted"></i> <span id="statusText"> Not recording</span></div>
+                </div>
+                <div class="col-md-8 text-center h2">
+                  <label id="recordHours">00</label>:<label id="recordMinutes">00</label>:<label id="recordSeconds">00</label>
+                </div>
                 </div>
               </div>
           </div>
@@ -162,6 +223,11 @@ function dontLeave() {
           </div>
 
           <div class="mb-3">
+            <label for="userChannel-Unit" class="form-label">Units:</label>
+            <input type="text" class="form-control" id="userChannel-Name" placeholder="%" name="userChannel-Unit">
+          </div>
+
+          <div class="mb-3">
             <label for="userChannel-equation" class="form-label">Equation:</label>
             <div id="EquationHelp" class="form-text m-1"><i class="fas fa-info-circle"></i> Refer to channels in the equation with their primary names, e.g. serialChannel_3, userChannel_2 </div>
             <input type="text" class="form-control" id="userChannel-equation-input" placeholder="Humidity" name="userChannel-equation">
@@ -183,6 +249,28 @@ function dontLeave() {
     </div>
   </div>
 </div>
+
+<!-- SAVE CONFIG MODAL-->
+<div class="modal fade" id="saveConfigModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="saveConfigModal_Label">Config Name:</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <div class="mb-3">
+            <input type="text" class="form-control" id="saveConfig-Name-input" placeholder="Give me a name (no spaces)" name="saveConfig-Name-input">
+          </div>
+      </div>
+      <div class="modal-footer">
+        <span class="text-danger" id="saveConfigModal-submit-error"></span>
+        <button type="button" class="btn btn-primary" id="saveConfigModal-submit-btn">Save config</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
   </body>
 </html>
