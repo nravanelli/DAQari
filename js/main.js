@@ -100,14 +100,31 @@ $(document).ready(function() {
       location.reload();
     });
 
-    $('#DAQ-charts').sortable({
+    $('#DAQ-charts, .DAQ-large-card').sortable({
       items: ".draggable-graph-div",
       handle: ".draggable-icon",
+      receive: function( event, ui ) {
+        console.log(event,ui);
+        console.log(ui.item[0].id);
+        let divID = event.target.id;
+        let divIDarr = divID.split('_');
+        if(divIDarr[0] == 'LargeDataCard'){
+          let chanDragDiv = ui.item[0].id;
+          let chanDragDivarr = chanDragDiv.split('-');
+          let chType = chanDragDivarr[1];
+          let chNum = chanDragDivarr[2];
+          $( "#DAQ-charts, .DAQ-large-card" ).sortable('cancel');
+          //lets create div content
+          $('#'+divID).html('<h4 class="card-title '+chType+'-'+chNum+'-value"></h4><h6 class="card-subtitle mb-2 text-muted '+chType+'-'+chNum+'-title"></h6>');          
+        }
+      },
+      connectWith: ".connectedSortable",
       update: function (event, ui) {
           var data = $(this).sortable('toArray');
           GlobalConfigArray['channelOrder'] = data;
         },
     });
+    $( ".DAQ-large-card" ).sortable( "option", "placeholder", "largeDataCard-placeholder" );
 
     $('#userChannel-equation-input').on('input',function(e){
     var equation = EquationEval.parse($('#userChannel-equation-input').val());

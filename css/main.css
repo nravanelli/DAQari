@@ -54,3 +54,9 @@
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+.DAQ-large-card .ui-sortable-placeholder{
+ max-height: 10px !important;
+ background-color: lightgrey !important;
+ border-style: dashed !important;
+}
