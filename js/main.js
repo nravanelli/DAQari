@@ -1,14 +1,13 @@
-// Global variables & classes
-
 var EquationEval = new exprEval.Parser();
 let fileHandle;
 let recordingData = false;
 let lastloggedDate = 0;
 let startRecordData = 0;
-let GlobalConfigArray = [];
+var GlobalConfigArray = {};
 let serialConnect = false;
 let initDrawGraphs = false;
 let lastComment = '';
+let ignoreFirst = false;
 
 $(document).ready(function() {
     getConfigs();
@@ -29,10 +28,12 @@ $(document).ready(function() {
               $('#'+key).removeClass('error-input');
             }
           }
-          var localdbkey = 'serialChannel_'+data['serialChannel-id'];
+          var id = data['serialChannel-id'];
           delete data['serialChannel-id'];
-          await idbKeyval.set(localdbkey, data);
-          UpdateConfig();
+          for (var key in data){
+            GlobalConfigArray['serialChannel'][id][key] = data[key];
+          }
+          //console.log(GlobalConfigArray);
     });
 
     $('#userChannelSettings-submit-btn').click(async () => {
@@ -91,8 +92,54 @@ $(document).ready(function() {
       var modalToggle = document.getElementById('saveConfigModal');
       const modal = bootstrap.Modal.getInstance(modalToggle);
       modal.hide();
-
     });
+
+    $('#downloadConfigModal-submit-btn').click(function () {
+      var name = $('#downloadConfig-Name-input').val();
+      if(!name){
+        $('#downloadConfigModal-submit-error').html('Error: give config a name');
+        return;
+      }
+      if (/\s/.test(name)) {
+        $('#downloadConfigModal-submit-error').html('Error: No spaces in name');
+        return;
+      }
+      if (name.includes("_")) {
+        $('#downloadConfigModal-submit-error').html('Error: Do not use underscores in name');
+        return;
+      }
+      name = name+'.txt';
+      downloadConfig(name);
+      var modalToggle = document.getElementById('downloadConfigModal');
+      const modal = bootstrap.Modal.getInstance(modalToggle);
+      modal.hide();
+    });
+
+
+    $('#uploadConfigModal-submit-btn').click(function () {
+      var name = $('#uploadConfig-Name-input').val();
+      if(!name){
+        $('#uploadConfigModal-submit-error').html('Error: give config a name');
+        return;
+      }
+      if (/\s/.test(name)) {
+        $('#uploadConfigModal-submit-error').html('Error: No spaces in name');
+        return;
+      }
+      if (name.includes("_")) {
+        $('#uploadConfigModal-submit-error').html('Error: Do not use underscores in name');
+        return;
+      }
+      let set = false;
+      if($("#uploadConfig-set").is(':checked')){
+        set = true;
+      }
+      uploadConfig(name,set);
+      var modalToggle = document.getElementById('uploadConfigModal');
+      const modal = bootstrap.Modal.getInstance(modalToggle);
+      modal.hide();
+    });
+
 
     $('#ClearConfig-btn').click(async () => {
       //destroy tables, clear all chart objects
@@ -104,8 +151,6 @@ $(document).ready(function() {
       items: ".draggable-graph-div",
       handle: ".draggable-icon",
       receive: function( event, ui ) {
-        console.log(event,ui);
-        console.log(ui.item[0].id);
         let divID = event.target.id;
         let divIDarr = divID.split('_');
         if(divIDarr[0] == 'LargeDataCard'){
@@ -115,16 +160,24 @@ $(document).ready(function() {
           let chNum = chanDragDivarr[2];
           $( "#DAQ-charts, .DAQ-large-card" ).sortable('cancel');
           //lets create div content
-          $('#'+divID).html('<h4 class="card-title '+chType+'-'+chNum+'-value"></h4><h6 class="card-subtitle mb-2 text-muted '+chType+'-'+chNum+'-title"></h6>');          
+          $('#'+divID).html('<h3 class="card-title text-danger mb-1"><span class="'+chType+'-'+chNum+'-value">0</span> <span class="'+chType+'-'+chNum+'-unit"></span></h3><h5 class="lead mb-1 '+chType+'-'+chNum+'-title"></h5><div class="mb-1 text-muted small">'+chType+' '+chNum+'</div>');
+          GlobalConfigArray[divID] = chType+'-'+chNum;
         }
       },
       connectWith: ".connectedSortable",
       update: function (event, ui) {
-          var data = $(this).sortable('toArray');
+          var data = $("#DAQ-charts").sortable('toArray');
           GlobalConfigArray['channelOrder'] = data;
         },
     });
-    $( ".DAQ-large-card" ).sortable( "option", "placeholder", "largeDataCard-placeholder" );
+
+    $( ".DAQ-large-card" ).on( "sortover", function( event, ui ) {
+        $("#"+event.target.id).addClass("DAQlargecard-hover");
+      } );
+    $( ".DAQ-large-card" ).on( "sortout", function( event, ui ) {
+       $(".DAQ-large-card").removeClass("DAQlargecard-hover");
+     });
+
 
     $('#userChannel-equation-input').on('input',function(e){
     var equation = EquationEval.parse($('#userChannel-equation-input').val());
@@ -183,114 +236,18 @@ $(document).ready(function() {
 
       conn.on("data", function(data) {
 
-        window.serialChannel = data;
-
-        for (var i in data) {
-          var value = Math.round((data[i] + Number.EPSILON) * 100) / 100;
-
-          //lets check if there are specific settings on this channel:
-          if(typeof GlobalConfigArray['serialChannel'] === 'undefined'){
-            GlobalConfigArray['serialChannel'] = [[]];
-          };
-          if(typeof GlobalConfigArray['serialChannel'][i] === 'undefined' || GlobalConfigArray['serialChannel'][i].length == 0){
-            //lets create default array since this is a new config:
-            GlobalConfigArray['serialChannel'][i] =
-            { chartConfig:
-              {
-                  lineColor : "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);}),
-                  refreshRate : 100,
-                  duration: 10000,
-                  delay: 100,
-              }
-            }
-
-          }
-            if(GlobalConfigArray['serialChannel'][i]['transform'] === 'on'){
-               value = TransformData(GlobalConfigArray['serialChannel'][i],'serialChannel',value);
-               if(typeof window.transformserial == 'undefined' || !(window.transformserial instanceof Array)){
-                 window.transformserial = new Array();
-               }
-               window.transformserial[i] = value;
-             }
-             //change title if set
-             if(GlobalConfigArray['serialChannel'][i]['serialChannel-Name']){
-               var channelName = GlobalConfigArray['serialChannel'][i]['serialChannel-Name'];
-               changeInnerHTMLbyClass('serialChannel-'+i+'-title',channelName);
-             }
-             if(GlobalConfigArray['serialChannel'][i]['serialChannel-Unit']){
-               //change units if Set
-               var channelUnit = GlobalConfigArray['serialChannel'][i]['serialChannel-Unit'];
-               changeInnerHTMLbyClass('serialChannel-'+i+'-unit',channelUnit);
-             }
-              changeInnerHTMLbyClass('serialChannel-'+i+'-value',value);
-        };
-
-
-        if(GlobalConfigArray['userChannel'] && GlobalConfigArray['userChannel'].length > 0){
-          if(typeof window.userChannel == 'undefined' || !(window.userChannel instanceof Array)){
-            window.userChannel = new Array();
-          }
-          var userChannels = GlobalConfigArray['userChannel'];
-          for (var chNum in userChannels) {
-
-              window.userChannel[chNum] =  TransformData(userChannels[chNum],'userChannel',null);
-              //console.log( TransformData(userChannels[chNum],'userChannel',null));
-              //change title if set
-              var channelName = GlobalConfigArray['userChannel'][chNum]['userChannel-Name'];
-              changeInnerHTMLbyClass('userChannel-'+chNum+'-title',channelName);
-              //change units if Set
-              var channelUnit = GlobalConfigArray['userChannel'][chNum]['userChannel-Unit'];
-             changeInnerHTMLbyClass('userChannel-'+chNum+'-unit',channelUnit);
-             changeInnerHTMLbyClass('userChannel-'+chNum+'-value',window.userChannel[chNum]);
-            }
-          }
-
-          if(serialConnect == false){
-            //console.log(GlobalConfigArray);
-            //first connection so lets draw all the graphs
-              if(!initDrawGraphs){
-                if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
-                  for (let channel of GlobalConfigArray['channelOrder']) {
-                        var items = channel.split('-');
-                        drawGraph(items[2],items[1],true);
-                    }
-                }else{
-                  for(var i in data){
-                    drawGraph(i,'serialChannel',true);
-                  }
-              }
-              var channelorderinit = $('#DAQ-charts').sortable('toArray');
-              GlobalConfigArray['channelOrder'] = channelorderinit;
-            }
-            serialConnect = true;
-            $('#serialConnect-btn').prop("disabled", true);
-          }
-
-
-        //save data if needed
-        let timenow = getTimeValue();
-        if(startRecordData == 0 && recordingData) { startRecordData = timenow; }
-        if(recordingData)(setRecordTime(timenow,startRecordData));
-        let interval = $("#datalogInterval").val();
-          if(!interval){ interval = 5;}
-
-          if(recordingData && $('#statusText').html() != 'Recording'){
-            $('#statusText').html('Recording');
-            $('#recordCircleIcon').removeClass('text-muted');
-            $('#recordCircleIcon').addClass('text-danger');
-            $('#recordCircleIcon').addClass('RecordBlink');
-          }
-          if(!recordingData && $('#statusText').html() != 'Not recording'){
-            $('#statusText').html('Not recording');
-            $('#recordCircleIcon').removeClass('text-danger');
-            $('#recordCircleIcon').addClass('text-muted');
-            $('#recordCircleIcon').removeClass('RecordBlink');
-          }
-
-        if((timenow - lastloggedDate) >= interval && recordingData){
-                    saveData(timenow);
+        //we need a delay since serial connections restart Arduinos
+        if(!ignoreFirst){
+          setTimeout(function() {
+              ignoreFirst = true;
+               dataStream(data);
+             }, 3000);
+        }else{
+          dataStream(data);
         }
-      })
+
+
+      });
 
     });
 
@@ -339,6 +296,119 @@ $(document).ready(function() {
 
 });
 
+//this is the main function to handle Data from Serial
+function dataStream(data){
+  if(!ignoreFirst){
+    return;
+  }
+  window.serialChannel = data;
+
+  for (var i in data) {
+    var value = Math.round((data[i] + Number.EPSILON) * 100) / 100;
+
+    //lets check if there are specific settings on this channel:
+    if(typeof GlobalConfigArray['serialChannel'] === 'undefined'){
+      GlobalConfigArray['serialChannel'] = [[]];
+    };
+    if(typeof GlobalConfigArray['serialChannel'][i] === 'undefined' || GlobalConfigArray['serialChannel'][i].length == 0){
+      //lets create default array since this is a new config:
+      GlobalConfigArray['serialChannel'][i] =
+      { chartConfig:
+        {
+            lineColor : "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);}),
+            refreshRate : 100,
+            duration: 10000,
+            delay: 100,
+        }
+      }
+
+    }
+      if(GlobalConfigArray['serialChannel'][i]['transform'] === 'on'){
+         value = TransformData(GlobalConfigArray['serialChannel'][i],'serialChannel',value);
+         if(typeof window.transformserial == 'undefined' || !(window.transformserial instanceof Array)){
+           window.transformserial = new Array();
+         }
+         window.transformserial[i] = value;
+       }
+       //change title if set
+       if(GlobalConfigArray['serialChannel'][i]['serialChannel-Name']){
+         var channelName = GlobalConfigArray['serialChannel'][i]['serialChannel-Name'];
+         changeInnerHTMLbyClass('serialChannel-'+i+'-title',channelName);
+       }
+       if(GlobalConfigArray['serialChannel'][i]['serialChannel-Unit']){
+         //change units if Set
+         var channelUnit = GlobalConfigArray['serialChannel'][i]['serialChannel-Unit'];
+         changeInnerHTMLbyClass('serialChannel-'+i+'-unit',channelUnit);
+       }
+        changeInnerHTMLbyClass('serialChannel-'+i+'-value',value);
+  };
+
+
+  if(GlobalConfigArray['userChannel'] && GlobalConfigArray['userChannel'].length > 0){
+    if(typeof window.userChannel == 'undefined' || !(window.userChannel instanceof Array)){
+      window.userChannel = new Array();
+    }
+    var userChannels = GlobalConfigArray['userChannel'];
+    for (var chNum in userChannels) {
+
+        window.userChannel[chNum] =  TransformData(userChannels[chNum],'userChannel',null);
+        //console.log( TransformData(userChannels[chNum],'userChannel',null));
+        //change title if set
+        var channelName = GlobalConfigArray['userChannel'][chNum]['userChannel-Name'];
+        changeInnerHTMLbyClass('userChannel-'+chNum+'-title',channelName);
+        //change units if Set
+        var channelUnit = GlobalConfigArray['userChannel'][chNum]['userChannel-Unit'];
+       changeInnerHTMLbyClass('userChannel-'+chNum+'-unit',channelUnit);
+       changeInnerHTMLbyClass('userChannel-'+chNum+'-value',window.userChannel[chNum]);
+      }
+    }
+
+    if(serialConnect == false){
+      //console.log(GlobalConfigArray);
+      //first connection so lets draw all the graphs
+        if(!initDrawGraphs){
+          if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
+            for (let channel of GlobalConfigArray['channelOrder']) {
+                  var items = channel.split('-');
+                  drawGraph(items[2],items[1],true);
+              }
+          }else{
+            for(var i in data){
+              drawGraph(i,'serialChannel',true);
+            }
+        }
+        var channelorderinit = $('#DAQ-charts').sortable('toArray');
+        GlobalConfigArray['channelOrder'] = channelorderinit;
+      }
+      serialConnect = true;
+      $('#serialConnect-btn').prop("disabled", true);
+    }
+
+
+  //save data if needed
+  let timenow = getTimeValue();
+  if(startRecordData == 0 && recordingData) { startRecordData = timenow; }
+  if(recordingData)(setRecordTime(timenow,startRecordData));
+  let interval = $("#datalogInterval").val();
+    if(!interval){ interval = 5;}
+
+    if(recordingData && $('#statusText').html() != 'Recording'){
+      $('#statusText').html('Recording');
+      $('#recordCircleIcon').removeClass('text-muted');
+      $('#recordCircleIcon').addClass('text-danger');
+      $('#recordCircleIcon').addClass('RecordBlink');
+    }
+    if(!recordingData && $('#statusText').html() != 'Not recording'){
+      $('#statusText').html('Not recording');
+      $('#recordCircleIcon').removeClass('text-danger');
+      $('#recordCircleIcon').addClass('text-muted');
+      $('#recordCircleIcon').removeClass('RecordBlink');
+    }
+
+  if((timenow - lastloggedDate) >= interval && recordingData){
+              saveData(timenow);
+  }
+}
 
 
 
@@ -370,7 +440,10 @@ async function saveData(time) {
     // Get the current file size.
       const writableStream = await fileHandle.createWritable({ keepExistingData: true });
       const size = (await fileHandle.getFile()).size;
-      var dataset = window['serialChannel'];
+      var dataset1 = window['serialChannel'];
+      if(typeof window.transformserial == 'undefined')
+      var dataset2 = window['transform'];
+      var dataset3 = window['userChannel'];
 
       let output = time+',';
 
@@ -383,10 +456,26 @@ async function saveData(time) {
         output += ',';
       }
 
-      for (var key in dataset) {
-          output += dataset[key]+',';
+      if(typeof window['serialChannel'] !== 'undefined'){
+        let dataset = window['serialChannel'];
+        for (var key in dataset) {
+            output += dataset[key]+',';
+        }
       }
 
+      if(typeof window['transformserial'] !== 'undefined'){
+        let dataset = window['transformserial'];
+        for (var key in dataset) {
+            output += dataset[key]+',';
+        }
+      }
+
+      if(typeof window['userChannel'] !== 'undefined'){
+        let dataset = window['userChannel'];
+        for (var key in dataset) {
+            output += dataset[key]+',';
+        }
+      }
       await writableStream.write({
         type: "write",
         data: output+" \r\n",
@@ -423,6 +512,19 @@ function saveConfigModalshow(){
   $('#saveConfig-Name-input').val("");
   $('#saveConfigModal-submit-btn').html('Save Config');
   var Modal = new bootstrap.Modal(document.getElementById('saveConfigModal'));
+  Modal.show();
+}
+
+function downloadConfigModalshow(){
+  $('#downloadConfig-Name-input').val("");
+  var Modal = new bootstrap.Modal(document.getElementById('downloadConfigModal'));
+  Modal.show();
+}
+
+function uploadConfigModalshow(){
+  $('#uploadConfig-file').val("");
+  $('#uploadConfigModal-submit-btn').html('Save Config');
+  var Modal = new bootstrap.Modal(document.getElementById('uploadConfigModal'));
   Modal.show();
 }
 
@@ -468,7 +570,6 @@ function drawGraph(i,origin,divcreate){
                 realtime: {
                   duration: 10000,
                   refresh: 100,
-                  delay: 2000,
                   frameRate: 30,
 
                   onRefresh: chart => {
@@ -510,6 +611,16 @@ function drawGraph(i,origin,divcreate){
       }
 }
 
+
+
+/*
+*
+*
+* Config Commands
+*
+*
+*/
+
 async function getConfigs(){
   $("#configSelect").html('<option selected disabled>Select config...</option>');
   await idbKeyval.keys().then((keys) => {
@@ -524,22 +635,57 @@ async function getConfigs(){
   });
 }
 
-async function SaveConfig(name){
-    let key = 'SettingsConfig_'+name;
-    await idbKeyval.set(key, GlobalConfigArray);
-}
-
 async function loadConfig(name){
   if(!name){
-    //await idbKeyval.get("lastconfigLoad").then((val) =>
-      //loadConfig(val)
-    //);
+    return;
   }else{
-      await idbKeyval.get(name).then((val) =>
-        GlobalConfigArray = val
-      );
+      await idbKeyval.get(name).then((val) => {
+        clearCurrentConfig();
+        GlobalConfigArray = val;
+        initGraphs();
+      });
       await idbKeyval.set("lastconfigLoad", name);
     }
+}
+
+function downloadConfig(fileName) {
+    var content = JSON.stringify(Object.assign({}, GlobalConfigArray));
+    console.log(content, GlobalConfigArray);
+    var a = document.createElement("a");
+    var file = new Blob([content], {type: 'text/plain'});
+    a.href = URL.createObjectURL(file);
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+async function uploadConfig(name,set) {
+          // DO Somthing
+          let file = document.getElementById('uploadConfig-file').files[0];
+          if (file) {
+              var reader = new FileReader();
+              reader.readAsText(file, "UTF-8");
+              reader.onload = function (evt) {
+                var filecontent = JSON.parse(evt.target.result);
+                if(typeof filecontent === 'object' && filecontent !== null){
+                  let configname = 'SettingsConfig_'+name;
+                  updateDBkey(configname,filecontent);
+                  if(set){
+                    clearCurrentConfig();
+                    GlobalConfigArray = filecontent;
+                    initGraphs();
+                  }
+                  $('#uploadConfigModal-submit-btn').html('<i class="far fa-check-circle"></i> Complete!');
+                  var modalToggle = document.getElementById('uploadConfigModal');
+                  const modal = bootstrap.Modal.getInstance(modalToggle);
+                  modal.hide();
+                }
+              }
+              reader.onerror = function (evt) {
+                  $("#uploadConfigModal-submit-error").html("Error reading file");
+              }
+          }
+    getConfigs();
 }
 
 function initGraphs(){
@@ -548,8 +694,37 @@ function initGraphs(){
           var items = channel.split('-');
           drawGraph(items[2],items[1],true);
       }
+      for (var i=1 ; i < 5 ; i++){
+        let divID = 'LargeDataCard_'+i;
+        if(GlobalConfigArray[divID]){
+          let item = GlobalConfigArray[divID].split('-');
+          let chType = item[0];
+          let chNum = item[1];
+          $('#'+divID).html('<h3 class="card-title text-danger mb-1"><span class="'+chType+'-'+chNum+'-value">0</span> <span class="'+chType+'-'+chNum+'-unit"></span></h3><h5 class="lead mb-1 '+chType+'-'+chNum+'-title"></h5><div class="mb-1 text-muted small">'+chType+' '+chNum+'</div>');
+          $('.DAQ-large-card').sortable('refresh');
+        }
+      }
       initDrawGraphs = true;
     }
+}
+function clearCurrentConfig(){
+  if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
+    for (let channel of GlobalConfigArray['channelOrder']) {
+          var items = channel.split('-');
+          var chartObject = items[1]+'-Chartjs-' + items[2];
+          window[chartObject].destroy();
+      }
+      for (var i=1 ; i < 5 ; i++){
+        let divid = '#LargeDataCard_'+i;
+        $(divid).html('<div class="card-title text-muted"><i class="far fa-hand-point-up"></i> <br> Drag Channel</div>');
+      }
+      $('#DAQ-charts').html("");
+    }
+    GlobalConfigArray = {};
+}
+
+function deleteCurrentConfig(){
+
 }
 
 async function updateDBkey(key,data){
@@ -560,17 +735,16 @@ function TransformData(array,type,rawvalue){
   if(type == 'serialChannel'){
     var xvalues = [];
     var yvalues = [];
-    xvalues.push(array['low-pc-input']);
-    yvalues.push(array['low-pc-input-equivalent']);
-    xvalues.push(array['high-pc-input']);
-    yvalues.push(array['high-pc-input-equivalent']);
+    xvalues.push(parseFloat(array['low-pc-input']));
+    yvalues.push(parseFloat(array['low-pc-input-equivalent']));
+    xvalues.push(parseFloat(array['high-pc-input']));
+    yvalues.push(parseFloat(array['high-pc-input-equivalent']));
     var regressiontype = array.transformtype;
         switch (regressiontype){
           case "linear":
           default:
               var result = linearRegression(yvalues,xvalues);
               var value = result['slope'] * rawvalue + result['intercept'];
-              return value;
       }
   }else if(type == 'userChannel'){
     let eq = array['userChannel-equation'];
@@ -585,9 +759,10 @@ function TransformData(array,type,rawvalue){
       variables[item] = varValue;
     }
     value = eqEval.evaluate(variables);
-    return value;
   }
 
+  value = Math.round((value + Number.EPSILON) * 100) / 100;
+  return value;
 }
 
 $(document).on('click', '.collapse-icon', function () {
@@ -636,6 +811,5 @@ function linearRegression(y,x){
     lr['slope'] = (n * sum_xy - sum_x * sum_y) / (n*sum_xx - sum_x * sum_x);
     lr['intercept'] = (sum_y - lr.slope * sum_x)/n;
     lr['r2'] = Math.pow((n*sum_xy - sum_x*sum_y)/Math.sqrt((n*sum_xx-sum_x*sum_x)*(n*sum_yy-sum_y*sum_y)),2);
-
     return lr;
 }

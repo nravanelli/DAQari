@@ -62,12 +62,12 @@ function dontLeave() {
                       <option disabled>Select config...</option>
                     </select>
                   </div>
-                  <div class="col-md-3 p-0"><button class="btn btn-success m-2" id="SaveConfig-btn" onclick="saveConfigModalshow();"><i class="fas fa-save"></i> Save Config</button></div>
-                  <div class="col-md-3 p-0"><button class="btn btn-secondary m-2" id="LoadConfig-btn" disabled><i class="fas fa-upload"></i> Upload Config</button></div>
-                  <div class="col-md-3 p-0"><button class="btn btn-warning m-2" id="DeleteConfig-btn"><i class="far fa-trash-alt"></i> Delete Config</button></div>
-                  <div class="col-md-3 p-0"><button class="btn btn-danger m-2" id="addUserChannel-btn" onclick="userChannel_SettingsModal();"><i class="fas fa-plus"></i> Custom Channel</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-success m-2" id="SaveConfig-btn" onclick="saveConfigModalshow();"><i class="fas fa-save"></i> Save</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-primary m-2" id="DownloadConfig-btn" onclick="downloadConfigModalshow();"><i class="fas fa-download"></i> Download</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-secondary m-2" id="uploadConfig-btn" onclick="uploadConfigModalshow();" ><i class="fas fa-upload"></i> Upload</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-danger m-2" id="DeleteConfig-btn" disabled><i class="far fa-trash-alt"></i> Delete</button></div>
                 </div>
-                <div id="DAQ-Large" class="row text-center border rounded mt-2 connectedSortable">
+                <div id="DAQ-Large" class="row text-center border rounded mt-2">
                   <div class="col-md-3">
                     <div class="card w-100 m-2">
                       <div class="card-body DAQ-large-card connectedSortable" id="LargeDataCard_1">
@@ -136,7 +136,12 @@ function dontLeave() {
         </div>
       </div>
 
-        <div id="DAQ-charts" class="mt-2 connectedSortable">
+      <div id="DAQ-window-settings" class="mt-2 border rounded">
+        <button class="btn btn-danger btn-sm m-2" id="addUserChannel-btn" onclick="userChannel_SettingsModal();"><i class="fas fa-plus"></i> Custom Channel</button>
+      </div>
+
+
+        <div id="DAQ-charts" class="mt-2 connectedSortable border rounded" style="min-height: 10px;">
         </div>
 
       </div>
@@ -266,6 +271,79 @@ function dontLeave() {
       <div class="modal-footer">
         <span class="text-danger" id="saveConfigModal-submit-error"></span>
         <button type="button" class="btn btn-primary" id="saveConfigModal-submit-btn">Save config</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Download CONFIG MODAL-->
+<div class="modal fade" id="downloadConfigModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="downloadConfigModal_Label">Filename:</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <div class="mb-3">
+            <input type="text" class="form-control" id="downloadConfig-Name-input" placeholder="Give me a name (no spaces)" name="downloadConfig-Name-input">
+            <div id="DownloadHelp" class="form-text"></div>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <span class="text-danger" id="downloadConfigModal-submit-error"></span>
+        <button type="button" class="btn btn-primary" id="downloadConfigModal-submit-btn">Download</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload CONFIG MODAL-->
+<div class="modal fade" id="uploadConfigModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="uploadConfigModal_Label">Upload Configuration:</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <div class="mb-3">
+             <input type="file"  id="uploadConfig-file">
+          </div>
+          <div class="mb-3">
+            <input type="text" class="form-control" id="uploadConfig-Name-input" placeholder="Name (no spaces or underscore)" name="uploadConfig-Name-input">
+            <div id="uploadHelp" class="form-text"></div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="uploadConfig-set">
+            <label class="form-check-label" for="uploadConfig-set">Set configuration on upload</label>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <span class="text-danger" id="uploadConfigModal-submit-error"></span>
+        <button type="button" class="btn btn-primary" id="uploadConfigModal-submit-btn">Upload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload CONFIG MODAL-->
+<div class="modal fade" id="deleteConfigModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteConfigModal_Label">Delete configuration confirmation:</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <div class="mb-3">
+            <input type="text" class="form-control" id="uploadConfig-Name-input" placeholder="Name (no spaces or underscore)" name="uploadConfig-Name-input">
+            <div id="uploadHelp" class="form-text"></div>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <span class="text-danger" id="uploadConfigModal-submit-error"></span>
+        <button type="button" class="btn btn-primary" id="uploadConfigModal-submit-btn">Upload</button>
       </div>
     </div>
   </div>
