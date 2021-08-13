@@ -2,9 +2,25 @@
 
 A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API's
 
-**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~5Hz passed through an ADC Arduino shield. It is not as sophisticated as products such as LabChart, LabView, or Matlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz (5-100Hz, depending on # of channels and amount of data being pushed to serial port), this is sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
+**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~5Hz passed through an ADC Arduino shield. It is not as sophisticated as products such as LabChart, LabView, or MATlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz (5-100Hz, depending on # of channels and amount of data being pushed to serial port), this is sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
 
 This can be ran locally (download git), or on ANY internet connected device [here](https://nravanelli.github.io/DAQari/).
+
+## Demo gif:
+
+![alt text](https://github.com/nravanelli/DAQari/blob/main/images/DAQariV1.gif)
+
+
+## Features:
++ Real-time data recording to local file
++ Transform serial inputs (2-point linear calibration)
++ Integrate serial inputs to create custom channels
++ Auto-detect number of inputs from serial data
++ Manipulate chart layout
++ Save configurations and share with others
++ Basic chart configuration settings
+
+***Note*** There are inefficiencies in the code, such as real-time recording that writes directly to a file at your selected interval. At higher recording frequencies (>1Hz) this might be slow. I might code local storage option and only save to file at larger intervals ... eventually.
 
 Here is an example Arduino sketch you can upload to get running (it can also be found in the [Arduino/example](./Arduino/example) folder):
 ```javascript
@@ -49,12 +65,7 @@ Thank you to the following libraries and frameworks that are incorporated into *
 - [Javascript Expression Evaluator](https://github.com/silentmatt/expr-eval)
 - [SimpleWebSerial](https://fmgrafikdesign.gitbook.io/simplewebserial/)
 
-
-## Demo:
-
-![alt text](https://github.com/nravanelli/DAQari/blob/main/images/DAQariV1.gif)
-
-Changelog
+Change log:
 ------
 __August 10, 2021__
 - Save configurations and load them
