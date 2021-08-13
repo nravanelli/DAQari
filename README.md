@@ -2,11 +2,11 @@
 
 A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API's
 
-**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~5Hz passed through an ADC Arduino shield. It is not as sophisticated as products such as LabChart, LabView, or Matlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz (5-100Hz, depending on # of channels and amount of data being pushed to serial port), this is sufficient. Considering that commercial options cost $1000's, a simple DAQ can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
+**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~5Hz passed through an ADC Arduino shield. It is not as sophisticated as products such as LabChart, LabView, or Matlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz (5-100Hz, depending on # of channels and amount of data being pushed to serial port), this is sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
 
 This can be ran locally (download git), or on ANY internet connected device [here](https://nravanelli.github.io/DAQari/).
 
-Here is an example Arduino sketch you can upload to get running (it can also be found in the [Arduino/example](../Arduino/example) folder):
+Here is an example Arduino sketch you can upload to get running (it can also be found in the [Arduino/example](./Arduino/example) folder):
 ```javascript
 #include <SimpleWebSerial.h>
 SimpleWebSerial WebSerial;
