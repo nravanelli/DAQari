@@ -28,6 +28,11 @@ function dontLeave() {
   return "Please, don't leave!";
 }
       </script>
+
+<script id="worker-code" type="dont/run">
+  setInterval(function() { postMessage(''); }, 1000 / 50);
+</script>
+
   </head>
   <body onbeforeunload="return dontLeave()">
     <div class="w-100 p-2">
@@ -57,15 +62,17 @@ function dontLeave() {
               </div>
               <div class="col-md-6">
                 <div class="row text-center border rounded">
-                  <div class="row w-100 m-2">
-                    <select class="form-select" id="configSelect" onChange="loadConfig(this.options[this.selectedIndex].value)">
-                      <option disabled>Select config...</option>
+                  <div class="w-100 input-group mt-2 mb-2">
+                    <span class="input-group-text" id="configSelect-inputLabel">Select Config</span>
+                    <select class="form-select" id="configSelect">
+                      <option disabled>Create a configuration</option>
                     </select>
+                    <button class="btn btn-outline-dark" type="button" id="loadConfig-btn">Load Configuration</button>
                   </div>
                   <div class="col-md-3 p-0"><button class="btn btn-success m-2" id="SaveConfig-btn" onclick="saveConfigModalshow();"><i class="fas fa-save"></i> Save</button></div>
                   <div class="col-md-3 p-0"><button class="btn btn-primary m-2" id="DownloadConfig-btn" onclick="downloadConfigModalshow();"><i class="fas fa-download"></i> Download</button></div>
                   <div class="col-md-3 p-0"><button class="btn btn-secondary m-2" id="uploadConfig-btn" onclick="uploadConfigModalshow();" ><i class="fas fa-upload"></i> Upload</button></div>
-                  <div class="col-md-3 p-0"><button class="btn btn-danger m-2" id="DeleteConfig-btn" disabled><i class="far fa-trash-alt"></i> Delete</button></div>
+                  <div class="col-md-3 p-0"><button class="btn btn-danger m-2" id="DeleteConfig-btn" onclick="deleteConfigModalshow();" disabled><i class="far fa-trash-alt"></i> Delete</button></div>
                 </div>
                 <div id="DAQ-Large" class="row text-center border rounded mt-2">
                   <div class="col-md-3">
@@ -167,18 +174,18 @@ function dontLeave() {
           <label for="low-pc-input" class="form-label">Point Calibration (Low):</label>
           <div id="lowpointCalibrateHelp" class="form-text m-0">e.g. 0 V = 0 C</div>
           <div class="input-group mb-3">
-            <input type="number" class="form-control" placeholder="0" id="low-pc-input" name="low-pc-input">
+            <input type="number" class="form-control" id="low-pc-input" name="low-pc-input">
             <span class="input-group-text"> = </span>
-            <input type="number" class="form-control" placeholder="0" id="low-pc-input-equivalent" name="low-pc-input-equivalent">
+            <input type="number" class="form-control" id="low-pc-input-equivalent" name="low-pc-input-equivalent">
           </div>
 
 
           <label for="high-pc-input" class="form-label">Point Calibration (High):</label>
-          <div id="highpointCalibrateHelp" class="form-text m-0">e.g. 5 V = 50 C</div>
+          <div id="highpointCalibrateHelp" class="form-text m-0">e.g. 5 V = 5 C</div>
           <div class="input-group mb-3">
-            <input type="number" class="form-control" placeholder="5" id="high-pc-input" name="high-pc-input">
+            <input type="number" class="form-control" id="high-pc-input" name="high-pc-input">
             <span class="input-group-text"> = </span>
-            <input type="number" class="form-control" placeholder="50" id="high-pc-input-equivalent" name="high-pc-input-equivalent">
+            <input type="number" class="form-control" id="high-pc-input-equivalent" name="high-pc-input-equivalent">
           </div>
 
           <div class="mb-3">
@@ -260,12 +267,21 @@ function dontLeave() {
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="saveConfigModal_Label">Config Name:</span></h5>
+        <h5 class="modal-title" id="saveConfigModal_Label">Config Details:</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
           <div class="mb-3">
+            <label for="saveConfig-Name-input" class="form-label">Name:</label>
             <input type="text" class="form-control" id="saveConfig-Name-input" placeholder="Give me a name (no spaces)" name="saveConfig-Name-input">
+          </div>
+          <div class="mb-3">
+            <label for="saveConfig-CreatedBy-input" class="form-label">Author:</label>
+            <input type="text" class="form-control" id="saveConfig-CreatedBy-input" placeholder="(optional)" name="author">
+          </div>
+          <div class="mb-3">
+            <label for="saveConfig-Desc-input" class="form-label">Description:</label>
+            <input type="textarea" class="form-control" id="saveConfig-Desc-input" placeholder="(optional)" name="description">
           </div>
       </div>
       <div class="modal-footer">
@@ -327,28 +343,45 @@ function dontLeave() {
   </div>
 </div>
 
-<!-- Upload CONFIG MODAL-->
+<!-- Delete CONFIG MODAL-->
 <div class="modal fade" id="deleteConfigModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="deleteConfigModal_Label">Delete configuration confirmation:</span></h5>
+        <h5 class="modal-title" id="deleteConfigModal_Label">Delete configurations:</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-          <div class="mb-3">
-            <input type="text" class="form-control" id="uploadConfig-Name-input" placeholder="Name (no spaces or underscore)" name="uploadConfig-Name-input">
-            <div id="uploadHelp" class="form-text"></div>
-          </div>
+        Select all configurations you would like to delete (this cannot be undone).
+        <div id="deleteConfiglist"></div>
       </div>
       <div class="modal-footer">
-        <span class="text-danger" id="uploadConfigModal-submit-error"></span>
-        <button type="button" class="btn btn-primary" id="uploadConfigModal-submit-btn">Upload</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="deleteConfigModal-submit-btn">Delete</button>
       </div>
     </div>
   </div>
 </div>
 
+<!-- Initial CONFIG MODAL-->
+<div class="modal fade" id="initConfigModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="initConfigModal_Label"> <i class="fas fa-spinner fa-pulse"></i> Detecting serial input configuration...</span></h5>
+      </div>
+      <div class="modal-body">
+        <div id="initConfigModal-arrayError">
+        </div>
+        <ul id="initConfigModal-body" class="list-group m-2">
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" id="initConfigModal-submit-btn" disabled>Start DAQari</button>
+      </div>
+    </div>
+  </div>
+</div>
 
   </body>
 </html>

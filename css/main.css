@@ -65,3 +65,27 @@
   background-color: lightgrey !important;
   border-style: dashed !important;
 }
+
+.fa-plus-square:hover{
+  color: red;
+  cursor: pointer;
+}
+.fa-minus-square:hover{
+  color: red;
+  cursor: pointer;
+}
+
+.clearDAQCardIcon {
+  color: grey;
+  padding: 1px;
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  right: 1px;
+  top: 1px;
+}
+
+.clearDAQCardIcon:hover {
+  color: darkgrey;
+  cursor: pointer;
+}

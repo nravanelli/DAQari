@@ -1,18 +1,87 @@
+/* DAQari - Simple Data acquisition software in a Chrome Web Browser
+*
+* Requires a board compatible with Arduino IDE programmer, or customizing serial output to conform to the required JSON printout.
+*
+* Copyright Nicholas Ravanelli, PhD
+* Assistant Professor, School of Kinesiology, Lakehead University
+*
+* Visit https://github.com/nravanelli/DAQari for the most recent version and Readme on how to get set up
+*/
+
+//Global variables//
 var EquationEval = new exprEval.Parser();
-let fileHandle;
-let recordingData = false;
-let lastloggedDate = 0;
-let startRecordData = 0;
+var fileHandle;
+var recordingData = false;
+
+//types of data that are logged as Global variables in the window:
+var GlobablDataTypes = ["serialChannel", "transformSerial", "userChannel"];
+
+var startRecordData = 0;
 var GlobalConfigArray = {};
-let serialConnect = false;
-let initDrawGraphs = false;
-let lastComment = '';
-let ignoreFirst = false;
+var serialConnect = false;
+var initDrawGraphs = false;
+var lastComment = '';
+var firstRun = false;
+var firstRun2 = false;
+var initConfigComplete = false;
+var serialRefreshrate = 0;
+var loggerColumnCount = 0;
+
+//performance recording
+var RecordDelay = 0;
+var nextLogtime = 0;
+var lastloggedDate = 0;
+
+
+//Performance Timer function found here: http://jsfiddle.net/9pg9L/93/
+(function ( window, document ) {
+    window.requestAnimationFrame = (function() {
+        return (
+            window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            function(callback, element) {
+                window.setTimeout(callback, 1000/60);
+            }
+        )
+    })();
+
+    window.performance = window.performance || {};
+    performance.now = (function() {
+        return performance.now    ||
+            performance.webkitNow ||
+            function() {
+                return new Date().getTime();
+            };
+    })();
+})( window, document );
+
+
 
 $(document).ready(function() {
+
+  //web-worker for retaining data logging while tab is inactive or out of focus, found here: https://jsfiddle.net/gowhari/pzywna6o/
+  var workerBlob = new Blob([document.querySelector('#worker-code').textContent]);
+  var webWorker = new Worker(window.URL.createObjectURL(workerBlob));
+  var t1 = 0;
+  webWorker.onmessage = function() {
+  	if(recordingData){
+      saveData();
+    }
+  }
+
     getConfigs();
     //get last used config from localdb
-    $.when(loadConfig(null)).then(function(){initGraphs()});
+    //$.when(loadConfig(null)).then(function(){initGraphs()});
+
+
+    //onclick of inital config
+    $('#initConfigModal-submit-btn').click(function () {
+      initConfigComplete = true;
+      initGraphs();
+      var modalToggle = document.getElementById('initConfigModal');
+      const modal = bootstrap.Modal.getInstance(modalToggle);
+      modal.hide();
+    });
 
     $('#serialChannelSettings-submit-btn').click(async () => {
           var data = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
@@ -23,6 +92,7 @@ $(document).ready(function() {
             if(!data[key]){
               $('#'+key).addClass('error-input');
               $('#serialChannelsetting-submit-error').html('Error: missing data required.');
+              console.log(key);
               return;
             }else{
               $('#'+key).removeClass('error-input');
@@ -33,7 +103,6 @@ $(document).ready(function() {
           for (var key in data){
             GlobalConfigArray['serialChannel'][id][key] = data[key];
           }
-          //console.log(GlobalConfigArray);
     });
 
     $('#userChannelSettings-submit-btn').click(async () => {
@@ -86,12 +155,21 @@ $(document).ready(function() {
         $('#saveConfigModal-submit-error').html('Error: Do not use underscores in name');
         return;
       }
+      var saveddate = new Date();
+      let info = {
+        'title' : name,
+        'author' : $('#saveConfig-CreatedBy-input').val(),
+        'desc' : $('#saveConfig-Desc-input').val(),
+        'date' : saveddate.toISOString(),
+      };
+      GlobalConfigArray['info'] = info;
       let key = 'SettingsConfig_'+name;
       updateDBkey(key,GlobalConfigArray);
       $('#saveConfigModal-submit-btn').html('<i class="far fa-check-circle"></i> Saved!');
       var modalToggle = document.getElementById('saveConfigModal');
       const modal = bootstrap.Modal.getInstance(modalToggle);
       modal.hide();
+      getConfigs();
     });
 
     $('#downloadConfigModal-submit-btn').click(function () {
@@ -141,10 +219,26 @@ $(document).ready(function() {
     });
 
 
-    $('#ClearConfig-btn').click(async () => {
+    $('#deleteConfigModal-submit-btn').click(async () => {
       //destroy tables, clear all chart objects
-      await idbKeyval.clear();
-      location.reload();
+      var deleteselect = $('.delete-config-checkbox:checkbox:checked');
+      let reload = false;
+      for (let del of deleteselect){
+        let id = del.id;
+        let title = id.split('_');
+        if(GlobalConfigArray['info']['title'] == title[1] ){
+          if(confirm('You are about to delete the current configuration, this will restart DAQari. Are you sure?')){
+            reload = true;
+          }else{
+            continue;
+          }
+        }
+        await idbKeyval.del(del.id);
+      }
+      if(reload){
+        location.reload();
+      }
+      getConfigs();
     });
 
     $('#DAQ-charts, .DAQ-large-card').sortable({
@@ -160,7 +254,7 @@ $(document).ready(function() {
           let chNum = chanDragDivarr[2];
           $( "#DAQ-charts, .DAQ-large-card" ).sortable('cancel');
           //lets create div content
-          $('#'+divID).html('<h3 class="card-title text-danger mb-1"><span class="'+chType+'-'+chNum+'-value">0</span> <span class="'+chType+'-'+chNum+'-unit"></span></h3><h5 class="lead mb-1 '+chType+'-'+chNum+'-title"></h5><div class="mb-1 text-muted small">'+chType+' '+chNum+'</div>');
+          $('#'+divID).html('<i class="far fa-times-circle clearDAQCardIcon" onclick="clearLargeDAQcard(\''+divID+'\');"></i><h3 class="card-title text-danger mb-1"><span class="'+chType+'-'+chNum+'-value">0</span> <span class="'+chType+'-'+chNum+'-unit"></span></h3><h5 class="lead mb-1 '+chType+'-'+chNum+'-title"></h5><div class="mb-1 text-muted small">'+chType+' '+chNum+'</div>');
           GlobalConfigArray[divID] = chType+'-'+chNum;
         }
       },
@@ -217,12 +311,12 @@ $(document).ready(function() {
     }
     });
 
-    $('#LoadConfig-btn').click(async () => {
+    //load selected config
+    $('#loadConfig-btn').click(async () => {
       //Load saved config
       key = $('#configSelect').val();
-      await idbKeyval.get(key).then((val) => GlobalConfigArray = val);
+      loadConfig(key);
     });
-
 
     //The SERIAL CONNECT FUNCTION(S)
     $('#serialConnect-btn').click(function(){
@@ -235,18 +329,36 @@ $(document).ready(function() {
 
 
       conn.on("data", function(data) {
-
+        let t1 = performance.now();
         //we need a delay since serial connections restart Arduinos
-        if(!ignoreFirst){
-          setTimeout(function() {
-              ignoreFirst = true;
-               dataStream(data);
-             }, 3000);
+        $('#serialConnect-btn').prop("disabled", true);
+        if(!initConfigComplete){
+          if(!firstRun){
+            setTimeout(function(){
+              if(!$('#initConfigModal').hasClass('show')){
+                var Modal = new bootstrap.Modal(document.getElementById('initConfigModal'), { backdrop: 'static', keyboard: false});
+                Modal.show();
+              }
+            },1000);
+            firstRun = true;
+          }
+          if(!firstRun2){
+            setTimeout(function(){
+                initSetup(data)
+              },1000);
+            firstRun2 = true;
+            }
+
+            if(firstRun & firstRun2){
+              initSetup(data);
+            }
         }else{
+          //Start streaming data immediately
           dataStream(data);
         }
 
-
+        //internal assessment of serial refresh rate in Hz
+        serialRefreshrate = 1000 / ((performance.now() - t1));
       });
 
     });
@@ -258,8 +370,10 @@ $(document).ready(function() {
     $("#LogdataSwitch").change(function(){
         if ($(this).is(':checked')){
           recordingData = true;
+          $("#datalogInterval").prop('disabled', true);
         }else{
           recordingData = false;
+          $("#datalogInterval").prop('disabled', false);
         }
       });
 
@@ -296,39 +410,73 @@ $(document).ready(function() {
 
 });
 
+
+//How to handle the first connection to an Arduino (i.e. not using a prior configuration)
+function initSetup(data){
+  //lets first make sure you have access to this function (only to be used when a configuration is NOT selected)
+  if(!initConfigComplete){
+      if(!Array.isArray(data)){
+        $('#initConfigModal-arrayError').html('<i class="far fa-times-circle" style="color:red;"></i> Serial data is not in correct JSON array format.');
+        return;
+      }else{
+        $('#initConfigModal-arrayError').html('<i class="far fa-check-circle" style="color: green;"></i> Serial input JSON array detected.');
+        $('#initConfigModal-submit-btn').prop('disabled', false);
+      }
+
+      if(typeof GlobalConfigArray['serialChannel'] === 'undefined'){
+        GlobalConfigArray['serialChannel'] = [[]];
+      };
+      if(GlobalConfigArray['serialChannel'].length > data.length){
+        console.log(GlobalConfigArray['serialChannel'].length, data.length);
+        //mismatch in channel identification, lets restart initiation script
+        GlobalConfigArray['serialChannel'] = [[]];
+        $('#initConfigModal-body').html('');
+
+      }
+      for (var i in data) {
+        var value = Math.round((data[i] + Number.EPSILON) * 100) / 100;
+      //lets check if there are specific settings on this channel:
+      if(typeof GlobalConfigArray['serialChannel'][i] === 'undefined' || GlobalConfigArray['serialChannel'][i].length == 0){
+        //lets create default array since this is a new config:
+        GlobalConfigArray['serialChannel'][i] =
+        { chartConfig:
+          {
+              lineColor : "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);}),
+              refreshRate : 100,
+              duration: 10000,
+              delay: 10,
+          }
+        }
+        $('#initConfigModal-body').append('<li class="list-group-item"><i class="far fa-check-circle" style="color: green;"></i> Channel '+i+' - Value: <span id="initConfigValue-'+i+'">'+value+'</span></li>');
+      }
+      $('#initConfigValue-'+i).html(value);
+
+    }
+  }
+  serialConnect = true;
+}
+
 //this is the main function to handle Data from Serial
 function dataStream(data){
-  if(!ignoreFirst){
+  //lets just make sure that initConfig has been setup
+  if(!initConfigComplete){
     return;
   }
+  //serial connection is active
+  serialConnect = true;
+
+  //storing data as global variable
   window.serialChannel = data;
 
   for (var i in data) {
     var value = Math.round((data[i] + Number.EPSILON) * 100) / 100;
 
-    //lets check if there are specific settings on this channel:
-    if(typeof GlobalConfigArray['serialChannel'] === 'undefined'){
-      GlobalConfigArray['serialChannel'] = [[]];
-    };
-    if(typeof GlobalConfigArray['serialChannel'][i] === 'undefined' || GlobalConfigArray['serialChannel'][i].length == 0){
-      //lets create default array since this is a new config:
-      GlobalConfigArray['serialChannel'][i] =
-      { chartConfig:
-        {
-            lineColor : "#000000".replace(/0/g,function(){return (~~(Math.random()*16)).toString(16);}),
-            refreshRate : 100,
-            duration: 10000,
-            delay: 100,
-        }
-      }
-
-    }
       if(GlobalConfigArray['serialChannel'][i]['transform'] === 'on'){
          value = TransformData(GlobalConfigArray['serialChannel'][i],'serialChannel',value);
-         if(typeof window.transformserial == 'undefined' || !(window.transformserial instanceof Array)){
-           window.transformserial = new Array();
+         if(typeof window.transformSerial == 'undefined' || !(window.transformSerial instanceof Array)){
+           window.transformSerial = new Array();
          }
-         window.transformserial[i] = value;
+         window.transformSerial[i] = value;
        }
        //change title if set
        if(GlobalConfigArray['serialChannel'][i]['serialChannel-Name']){
@@ -363,34 +511,14 @@ function dataStream(data){
       }
     }
 
-    if(serialConnect == false){
-      //console.log(GlobalConfigArray);
-      //first connection so lets draw all the graphs
-        if(!initDrawGraphs){
-          if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
-            for (let channel of GlobalConfigArray['channelOrder']) {
-                  var items = channel.split('-');
-                  drawGraph(items[2],items[1],true);
-              }
-          }else{
-            for(var i in data){
-              drawGraph(i,'serialChannel',true);
-            }
-        }
-        var channelorderinit = $('#DAQ-charts').sortable('toArray');
-        GlobalConfigArray['channelOrder'] = channelorderinit;
-      }
-      serialConnect = true;
-      $('#serialConnect-btn').prop("disabled", true);
-    }
-
-
-  //save data if needed
-  let timenow = getTimeValue();
-  if(startRecordData == 0 && recordingData) { startRecordData = timenow; }
+  //save data if needed/requested
+  let timenow = Date.now();
+  if(startRecordData == 0 && recordingData) {
+    startRecordData = Date.now();
+    saveData();
+  }
   if(recordingData)(setRecordTime(timenow,startRecordData));
-  let interval = $("#datalogInterval").val();
-    if(!interval){ interval = 5;}
+
 
     if(recordingData && $('#statusText').html() != 'Recording'){
       $('#statusText').html('Recording');
@@ -405,20 +533,10 @@ function dataStream(data){
       $('#recordCircleIcon').removeClass('RecordBlink');
     }
 
-  if((timenow - lastloggedDate) >= interval && recordingData){
-              saveData(timenow);
-  }
-}
-
-
-
-function getTimeValue() {
-    var Time = Math.floor(Date.now() / 1000)
-    return Time;
 }
 
 function setRecordTime(timenow,timeinit) {
-    let duration = timenow - timeinit;
+    let duration = Math.floor((timenow - timeinit) / 1000);
     let hour = Math.floor(duration /3600);
     let minute = Math.floor((duration - hour*3600)/60);
     let seconds = duration - (hour*3600 + minute*60);
@@ -434,62 +552,115 @@ function setRecordTime(timenow,timeinit) {
 }
 
 
-async function saveData(time) {
-    lastloggedDate = time;
-    //write to datalog file
-    // Get the current file size.
-      const writableStream = await fileHandle.createWritable({ keepExistingData: true });
-      const size = (await fileHandle.getFile()).size;
-      var dataset1 = window['serialChannel'];
-      if(typeof window.transformserial == 'undefined')
-      var dataset2 = window['transform'];
-      var dataset3 = window['userChannel'];
+function saveData() {
 
-      let output = time+',';
+    let interval = $("#datalogInterval").val() * 1000 ;
+    //default to 5 seconds
+    if(!interval){ interval = 5000;}
 
-      //do not place new comment every time
-      let newComment = $('#fileComment-input').data("comment");
-      if(newComment){
-        output += newComment+',';
-        $('#fileComment-input').data("comment", '');
-      }else{
-        output += ',';
-      }
+    //do not allow for less than 1 second between recorded values
+    if(interval < 1000){interval = 1000;}
 
-      if(typeof window['serialChannel'] !== 'undefined'){
-        let dataset = window['serialChannel'];
-        for (var key in dataset) {
-            output += dataset[key]+',';
+    let tnow = Math.floor(performance.now());
+    if(tnow > nextLogtime){
+
+        if(nextLogtime == 0){
+          nextLogtime = tnow;
         }
+        writeData(Date.now());
+        RecordTimeDrift = Math.floor(performance.now()) - tnow;
+        lastloggedDate = nextLogtime;
+        nextLogtime = nextLogtime + interval;
       }
-
-      if(typeof window['transformserial'] !== 'undefined'){
-        let dataset = window['transformserial'];
-        for (var key in dataset) {
-            output += dataset[key]+',';
-        }
-      }
-
-      if(typeof window['userChannel'] !== 'undefined'){
-        let dataset = window['userChannel'];
-        for (var key in dataset) {
-            output += dataset[key]+',';
-        }
-      }
-      await writableStream.write({
-        type: "write",
-        data: output+" \r\n",
-        position: size,
-      });
-      await writableStream.close();
-
 }
 
+async function writeData(writetime){
+  //write to datalog file
+  // Get the current file size.
+  const writableStream = await fileHandle.createWritable({ keepExistingData: true });
+  const size = (await fileHandle.getFile()).size;
+
+  let output = writetime+',';
+
+  //do not place new comment every time
+  let newComment = $('#fileComment-input').data("comment");
+  if(newComment){
+    output += newComment+',';
+    $('#fileComment-input').data("comment", '');
+  }else{
+    output += ',';
+  }
+
+  let columns = 0;
+  for (let type of GlobablDataTypes) {
+    if(typeof window[type] !== 'undefined'){
+      let dataset = window[type];
+      for (var key in dataset) {
+          output += dataset[key]+',';
+          columns++;
+      }
+    }
+  }
+  //Checks if we need to add the column headers to the file - possible that a channel was added after recording
+  if(columns != loggerColumnCount){
+    var columnNames = 'time,comment,';
+    for (let type of GlobablDataTypes) {
+      if(typeof window[type] !== 'undefined'){
+        let dataset = window[type];
+        for (var key in dataset) {
+          let dataType = type;
+          if(type == 'transformSerial'){
+            dataType = 'serialChannel';
+          }
+          let chNamekey = dataType+'-Name';
+          if(GlobalConfigArray[dataType][key][chNamekey] !== 'undefined'){
+            columnNames += type+'_'+key+'('+GlobalConfigArray[dataType][key][chNamekey] + '),';
+          }else{
+            columnNames += type+'_'+key+',';
+          }
+        }
+      }
+    }
+    output = columnNames + ' \r\n' + output;
+    loggerColumnCount = columns;
+  }
+
+  await writableStream.write({
+    type: "write",
+    data: output+" \r\n",
+    position: size,
+  });
+  await writableStream.close();
+}
 
 //Modal functions
 function serialChannel_SettingsModal(ch){
     $('#serialChannel-SettingsLabel').html("Serial Channel: "+ch);
     $('#serialChannel-id').val(ch);
+    $('#serialChannelsetting-submit-error').html('');
+
+    //Reset the form or loads current channel config
+    var inputs = $('#serialChannel-Settings-form').serializeArray().reduce(function(obj, item) {
+                  obj[item.name] = item.value;
+                  return obj;
+              }, {});
+    for (var key in inputs){
+      if(key === 'serialChannel-id'){
+        continue;
+      }
+      $('#'+key).val('');
+      if(key == 'low-pc-input' || key == 'low-pc-input-equivalent'){
+        $('#'+key).prop('value', 1);
+        continue;
+      }
+      if(key == 'high-pc-input' || key == 'high-pc-input-equivalent'){
+        $('#'+key).prop('value', 5);
+        continue;
+      }
+      if(GlobalConfigArray['serialChannel'][ch][key] !== 'undefined'){
+        $('#'+key).val(GlobalConfigArray['serialChannel'][ch][key]);
+      }
+    }
     var Modal = new bootstrap.Modal(document.getElementById('serialChannel_Settings'));
     Modal.show();
 }
@@ -528,14 +699,32 @@ function uploadConfigModalshow(){
   Modal.show();
 }
 
+function deleteConfigModalshow(){
+  $("#deleteConfiglist").html('');
+  $("#configSelect option").each(function()
+      {
+        let val = $(this).val();
+        let name = $(this).text();
+        if(val.includes('SettingsConfig')){
+          let div = '<div class="form-check m-2"><input class="form-check-input delete-config-checkbox" type="checkbox" value="'+val+'" id="'+val+'"><label class="form-check-label fw-bold" for="'+val+'">'+name+'</label></div>';
+          $("#deleteConfiglist").append(div);
+        }
+      });
+
+  var Modal = new bootstrap.Modal(document.getElementById('deleteConfigModal'));
+  Modal.show();
+}
+
 
 function drawGraph(i,origin,divcreate){
       var graphcanvasid = 'canvas-'+origin+'-'+i;
       var graphdiv = 'channelParentdiv-'+origin+'-'+i;
       var linecolor = GlobalConfigArray[origin][i]['chartConfig']['lineColor'];
+      var chartDuration = GlobalConfigArray[origin][i]['chartConfig']['duration'];
+      var chartDurSeconds = chartDuration/1000;
       var chartObject = origin+'-Chartjs-' + i;
       if(divcreate){
-        var charthtml = '<div class="card mb-2 draggable-graph-div" id="'+graphdiv+'"><div class="card-body"><div class="row w-100"><div class="h6 card-title d-flex"><div class="col-md-6"><a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+',#'+origin+'-'+i+'-chartSettingsdiv" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <i class="fas fa-arrows-alt draggable-icon"></i> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+');"><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger '+origin+'-'+i+'-title"></span> <i>Value: <span id="'+origin+'-'+i+'-value" class="'+origin+'-'+i+'-value"></span> <span id="'+origin+'-'+i+'-unit" class="'+origin+'-'+i+'-unit"></span></i></div><div class="col-md-6 d-flex flex-md-row-reverse"><div class="float-right collapse show" id="'+origin+'-'+i+'-chartSettingsdiv">Chart Options: <label id="lineColor-'+origin+'-'+i+'-label" class="fas fa-eye-dropper" style="color: '+linecolor+';"><input type="color" class="inputColor" id="lineColor-'+origin+'-'+i+'" value="'+linecolor+'" data-origin="'+origin+'" data-id="'+i+'" oninput="chartLineColorChange(this,\''+chartObject+'\');"/></label></div></div></div></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphcanvasid+'" style="max-height:100px"></canvas></div></div></div>';
+        var charthtml = '<div class="card mb-2 draggable-graph-div" id="'+graphdiv+'"><div class="card-body"><div class="row w-100"><div class="h6 card-title d-flex"><div class="col-md-6"><a data-bs-toggle="collapse" href="#'+origin+'-collapse-'+i+',#'+origin+'-'+i+'-chartSettingsdiv" class="link-secondary collapse-icon" role="button"><i class="far fa-minus-square"></i></a> <i class="fas fa-arrows-alt draggable-icon"></i> <a class="link-secondary" role="button" onclick="'+origin+'_SettingsModal('+i+');"><i class="fas fa-cog"></i></a> '+origin+' '+i+'; <span id="'+origin+'-'+i+'-title" class="text-danger '+origin+'-'+i+'-title"></span> <i>Value: <span id="'+origin+'-'+i+'-value" class="'+origin+'-'+i+'-value"></span> <span id="'+origin+'-'+i+'-unit" class="'+origin+'-'+i+'-unit"></span></i></div><div class="col-md-6 d-flex flex-md-row-reverse"><div class="float-right collapse show" id="'+origin+'-'+i+'-chartSettingsdiv"> Duration: <span id="chartDurationlabel-'+origin+'-'+i+'">'+chartDurSeconds+'s</span> <i class="far fa-plus-square" data-origin="'+origin+'" data-id="'+i+'" onclick="chartDurationChange(this,\''+chartObject+'\',true)"></i> <i class="far fa-minus-square" data-origin="'+origin+'" data-id="'+i+'" onclick="chartDurationChange(this,\''+chartObject+'\',false)"></i> <label id="lineColor-'+origin+'-'+i+'-label" class="fas fa-eye-dropper" style="color: '+linecolor+';"><input type="color" class="inputColor" id="lineColor-'+origin+'-'+i+'" value="'+linecolor+'" data-origin="'+origin+'" data-id="'+i+'" oninput="chartLineColorChange(this,\''+chartObject+'\');"/></label> </div></div></div></div><div class="row w-100 collapse show" id="'+origin+'-collapse-'+i+'"><canvas id="'+graphcanvasid+'" style="max-height:100px"></canvas></div></div></div>';
         $("#DAQ-charts").append(charthtml);
         }
 
@@ -569,9 +758,9 @@ function drawGraph(i,origin,divcreate){
                 type: 'realtime',
                 realtime: {
                   duration: 10000,
-                  refresh: 100,
+                  refresh: 10,
                   frameRate: 30,
-
+                  delay: 10,
                   onRefresh: chart => {
                       const now = Date.now();
                       let value = 0;
@@ -581,7 +770,7 @@ function drawGraph(i,origin,divcreate){
                         }
                         if(GlobalConfigArray[origin] && typeof GlobalConfigArray[origin][i] !== 'undefined'){
                           if(GlobalConfigArray[origin][i]['transform'] === 'on'){
-                            value = window.transformserial[i];
+                            value = window.transformSerial[i];
                           }
                         }
                       }
@@ -622,8 +811,14 @@ function drawGraph(i,origin,divcreate){
 */
 
 async function getConfigs(){
-  $("#configSelect").html('<option selected disabled>Select config...</option>');
+  let currentSelect = $("#configSelect").val();
   await idbKeyval.keys().then((keys) => {
+    if(keys.length > 0){
+      $("#configSelect").html('');
+      $('#DeleteConfig-btn').prop('disabled', false);
+    }else{
+      $("#configSelect").html('<option>No stored configs</option>');$('#DeleteConfig-btn').prop('disabled', true);
+    }
     for (var i=0 , j = keys.length ; i < j ;i++){
       let item = keys[i];
       let def = item.split('_');
@@ -632,6 +827,7 @@ async function getConfigs(){
         $("#configSelect").append($('<option></option>').val(keys[i]).html(name));
       }
     }
+    $('#configSelect').val(currentSelect);
   });
 }
 
@@ -645,6 +841,8 @@ async function loadConfig(name){
         initGraphs();
       });
       await idbKeyval.set("lastconfigLoad", name);
+      getConfigs();
+      initConfigComplete = true;
     }
 }
 
@@ -670,10 +868,14 @@ async function uploadConfig(name,set) {
                 if(typeof filecontent === 'object' && filecontent !== null){
                   let configname = 'SettingsConfig_'+name;
                   updateDBkey(configname,filecontent);
+                  getConfigs();
                   if(set){
-                    clearCurrentConfig();
-                    GlobalConfigArray = filecontent;
-                    initGraphs();
+                    setTimeout(function(){
+                      clearCurrentConfig();
+                      GlobalConfigArray = filecontent;
+                      initGraphs();
+                      $('#configSelect').val(configname);
+                    },1000);
                   }
                   $('#uploadConfigModal-submit-btn').html('<i class="far fa-check-circle"></i> Complete!');
                   var modalToggle = document.getElementById('uploadConfigModal');
@@ -694,19 +896,32 @@ function initGraphs(){
           var items = channel.split('-');
           drawGraph(items[2],items[1],true);
       }
-      for (var i=1 ; i < 5 ; i++){
+    }else{
+      for(var i in GlobalConfigArray['serialChannel']){
+        drawGraph(i,'serialChannel',true);
+      }
+    }
+    for (var i=1 ; i < 5 ; i++){
         let divID = 'LargeDataCard_'+i;
         if(GlobalConfigArray[divID]){
           let item = GlobalConfigArray[divID].split('-');
           let chType = item[0];
           let chNum = item[1];
-          $('#'+divID).html('<h3 class="card-title text-danger mb-1"><span class="'+chType+'-'+chNum+'-value">0</span> <span class="'+chType+'-'+chNum+'-unit"></span></h3><h5 class="lead mb-1 '+chType+'-'+chNum+'-title"></h5><div class="mb-1 text-muted small">'+chType+' '+chNum+'</div>');
+          $('#'+divID).html('<i class="far fa-times-circle clearDAQCardIcon" onclick="clearLargeDAQcard(\''+divID+'\');"></i><h3 class="card-title text-danger mb-1"><span class="'+chType+'-'+chNum+'-value">0</span> <span class="'+chType+'-'+chNum+'-unit"></span></h3><h5 class="lead mb-1 '+chType+'-'+chNum+'-title"></h5><div class="mb-1 text-muted small">'+chType+' '+chNum+'</div>');
           $('.DAQ-large-card').sortable('refresh');
         }
       }
+      var channelorderinit = $('#DAQ-charts').sortable('toArray');
+      GlobalConfigArray['channelOrder'] = channelorderinit;
       initDrawGraphs = true;
-    }
 }
+
+function clearLargeDAQcard(div){
+  $('#'+div).html('<div class="card-title text-muted"><i class="far fa-hand-point-up"></i> <br> Drag Channel</div>');
+  delete GlobalConfigArray[div];
+  console.log(GlobalConfigArray);
+}
+
 function clearCurrentConfig(){
   if(typeof GlobalConfigArray['channelOrder'] !== 'undefined' ){
     for (let channel of GlobalConfigArray['channelOrder']) {
@@ -723,7 +938,8 @@ function clearCurrentConfig(){
     GlobalConfigArray = {};
 }
 
-function deleteCurrentConfig(){
+function deleteConfig(config){
+
 
 }
 
@@ -777,6 +993,18 @@ function chartLineColorChange(el,chart){
   document.getElementById(label).style.setProperty('color', color);
   window[chart].update();
   GlobalConfigArray[el.dataset.origin][el.dataset.id]['chartConfig']['lineColor'] = color;
+}
+
+function chartDurationChange(el,chart,dir){
+  if(dir){
+    var newValue = GlobalConfigArray[el.dataset.origin][el.dataset.id]['chartConfig']['duration'] + 1000;
+  }else{
+    var newValue = GlobalConfigArray[el.dataset.origin][el.dataset.id]['chartConfig']['duration'] - 1000;
+  }
+  window[chart].options.scales.x.realtime.duration = newValue;
+  window[chart].update('none');
+  GlobalConfigArray[el.dataset.origin][el.dataset.id]['chartConfig']['duration'] = newValue;
+  $('#chartDurationlabel-'+el.dataset.origin+'-'+el.dataset.id).html(newValue/1000 +'s');
 }
 
 function changeInnerHTMLbyClass(classid,value){

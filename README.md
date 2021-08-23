@@ -2,7 +2,7 @@
 
 A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API's
 
-**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~5Hz passed through an ADC Arduino shield. It is not as sophisticated as products such as LabChart, LabView, or MATlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz (5-100Hz, depending on # of channels and amount of data being pushed to serial port), this is sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
+**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~0.2Hz (or every 5 seconds) passed through an ADC Arduino shield. It is not as sophisticated as products from LabChart, LabView, or MATlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz, this is more than sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
 
 This can be ran locally (download git), or on ANY internet connected device [here](https://nravanelli.github.io/DAQari/).
 
@@ -12,22 +12,22 @@ This can be ran locally (download git), or on ANY internet connected device [her
 
 
 ## Features:
-+ Real-time data recording to local file
++ Real-time data recording to local file (<1Hz - currently)*
 + Transform serial inputs (2-point linear calibration)
 + Integrate serial inputs to create custom channels
-+ Auto-detect number of inputs from serial data
++ Auto-detect number of channels from incoming serial data
 + Manipulate chart layout
 + Save configurations and share with others
 + Basic chart configuration settings
 
-***Note*** There are inefficiencies in the code, such as real-time recording that writes directly to a file at your selected interval. At higher recording frequencies (>1Hz) this might be slow. I might code local storage option and only save to file at larger intervals ... eventually.
+******* real-time recording writes directly to a file at your selected interval.
 
-Here is an example Arduino sketch you can upload to get running (it can also be found in the [Arduino/example](./Arduino/example) folder):
+Here is an example Arduino sketch you can upload to get running (it can also be found in the [Arduino/example](./Arduino/example) folder). You will need the [Arduino_JSON Library](https://arduinojson.org/). If all your use-case requires is 8 channels at 10-bit accuracy, this is an extremely low-cost option for a DAQ:
+
 ```javascript
-#include <SimpleWebSerial.h>
-SimpleWebSerial WebSerial;
+#include "Arduino_JSON.h"
 JSONVar channels;
-#define PRINT_SPEED 30 // increase value if you are having issues
+#define PRINT_SPEED 2 // increase value if you are having issues
 static unsigned long lastPrint = 0; // Keep track of print time
 
 int analogPins[] = {A0,A1,A2,A3,A4,A5,A6,A7};
@@ -46,7 +46,11 @@ if ((lastPrint + PRINT_SPEED) < millis()) // Establish a basic "x times per seco
     }
 
     // Send the event with JSON variable as parameter to DAQari - DO NOT REMOVE "data". DAQari is listening for that string to be sent, this triggers new data
-    WebSerial.send("data", channels);
+    JSONVar event;
+    event[0] = "data"; //DO NOT CHANGE THIS
+    event[1] = channels;
+
+    Serial.println(JSON.stringify(event));
 
     Serial.flush(); // clear Serial after writing
 
@@ -67,6 +71,13 @@ Thank you to the following libraries and frameworks that are incorporated into *
 
 Change log:
 ------
+__August 23, 2021__
+- Upload configurations
+- Download configurations
+- Delete locally stored configurations
+- Record to local file, currently restricted to 1Hz as fastest write speed
+- Basic channel setting options
+
 __August 10, 2021__
 - Save configurations and load them
 - Added Baud rate selection
@@ -75,13 +86,14 @@ __August 10, 2021__
 __July 27, 2021__
 - Able to add custom channels integrating values from other predefined channels
 - Change line color for each graph
-- Clear past config (destroys localdb and refreshes page)
+- Clear past config (destroys localdb and refreshes page) -- depreciated
 
 __July 23, 2021__
 - Store channel order in localdb
 - Incorporated jQuery UI Sortable for handling channel order
 
 __July 22, 2021__
+- Uploaded to Github
 - Draggable channel order
 - Store channel settings in browser Localdb
 - Transform inputs (linear regression)
