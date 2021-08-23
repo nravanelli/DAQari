@@ -758,7 +758,7 @@ function drawGraph(i,origin,divcreate){
                 type: 'realtime',
                 realtime: {
                   duration: 10000,
-                  refresh: 10,
+                  refresh: 50,
                   frameRate: 30,
                   delay: 10,
                   onRefresh: chart => {

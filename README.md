@@ -8,7 +8,7 @@ This can be ran locally (download git), or on ANY internet connected device [her
 
 ## Demo gif:
 
-![alt text](https://github.com/nravanelli/DAQari/blob/main/images/DAQariV1.gif)
+![alt text](https://github.com/nravanelli/DAQari/blob/main/images/DAQariExample.gif)
 
 
 ## Features:
