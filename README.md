@@ -2,9 +2,9 @@
 
 A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API's
 
-**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~0.2Hz (or every 5 seconds) passed through an ADC Arduino shield. It is not as sophisticated as products from LabChart, LabView, or MATlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low Hz, this is more than sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
+**DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~0.2Hz (or every 5 seconds) passed through an ADC Arduino shield. It is not as sophisticated as products from LabChart, LabView, or MATlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low frequency (eg < 200 Hz), this is more than sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
 
-This can be ran locally (download git), or on ANY internet connected device [here](https://nravanelli.github.io/DAQari/).
+This must be ran through the Chrome Browser by visiting [here](https://nravanelli.github.io/DAQari/).
 
 ## Demo gif:
 
@@ -12,7 +12,7 @@ This can be ran locally (download git), or on ANY internet connected device [her
 
 
 ## Features:
-+ Real-time data recording to local file (<1Hz - currently)*
++ Real-time data recording to local file (up to 1000 Hz)*
 + Transform serial inputs (2-point linear calibration)
 + Integrate serial inputs to create custom channels
 + Auto-detect number of channels from incoming serial data
@@ -20,14 +20,14 @@ This can be ran locally (download git), or on ANY internet connected device [her
 + Save configurations and share with others
 + Basic chart configuration settings
 
-******* real-time recording writes directly to a file at your selected interval.
+***Note:** Current implementation of recording at high sample rate (1000 Hz) will interpolate missing values. That is, missing data will be replaced with the closest known value. There is a risk of missing data at this speed.
 
 Here is an example Arduino sketch you can upload to get running (it can also be found in the [Arduino/example](./Arduino/example) folder). You will need the [Arduino_JSON Library](https://arduinojson.org/). If all your use-case requires is 8 channels at 10-bit accuracy, this is an extremely low-cost option for a DAQ:
 
 ```javascript
 #include "Arduino_JSON.h"
 JSONVar channels;
-#define PRINT_SPEED 2 // increase value if you are having issues
+#define PRINT_SPEED 20 // increase value if you are having issues
 static unsigned long lastPrint = 0; // Keep track of print time
 
 int analogPins[] = {A0,A1,A2,A3,A4,A5,A6,A7};
@@ -71,6 +71,9 @@ Thank you to the following libraries and frameworks that are incorporated into *
 
 Change log:
 ------
+__August 31, 2021__
+- Able to record to data file at up to 1000 Hz (or every millisecond)
+
 __August 23, 2021__
 - Upload configurations
 - Download configurations

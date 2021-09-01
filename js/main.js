@@ -20,12 +20,14 @@ var startRecordData = 0;
 var GlobalConfigArray = {};
 var serialConnect = false;
 var initDrawGraphs = false;
-var lastComment = '';
+var commentArray = {};
 var firstRun = false;
 var firstRun2 = false;
 var initConfigComplete = false;
 var serialRefreshrate = 0;
 var loggerColumnCount = 0;
+var dataLoggerArray = new CBuffer(7000);
+var dataloggerCache = '';
 
 //performance recording
 var RecordDelay = 0;
@@ -70,9 +72,6 @@ $(document).ready(function() {
   }
 
     getConfigs();
-    //get last used config from localdb
-    //$.when(loadConfig(null)).then(function(){initGraphs()});
-
 
     //onclick of inital config
     $('#initConfigModal-submit-btn').click(function () {
@@ -364,7 +363,9 @@ $(document).ready(function() {
     });
 
     $('#submitComment-btn').click(function(){
-      $('#fileComment-input').data("comment", $('#fileComment-input').val());
+      let commentTime = Date.now();
+      commentArray[commentTime] = $('#fileComment-input').val();
+
     });
 
     $("#LogdataSwitch").change(function(){
@@ -374,6 +375,10 @@ $(document).ready(function() {
         }else{
           recordingData = false;
           $("#datalogInterval").prop('disabled', false);
+          //write remaining data to file
+          writeWebWorker();
+
+          var lastloggedDate = nextLogtime = startRecordData = 0;
         }
       });
 
@@ -467,7 +472,7 @@ function dataStream(data){
 
   //storing data as global variable
   window.serialChannel = data;
-
+  //console.log(data);
   for (var i in data) {
     var value = Math.round((data[i] + Number.EPSILON) * 100) / 100;
 
@@ -513,25 +518,31 @@ function dataStream(data){
 
   //save data if needed/requested
   let timenow = Date.now();
+
+  //store incoming data in local array
+  localDataStreamArray(timenow);
+
   if(startRecordData == 0 && recordingData) {
     startRecordData = Date.now();
     saveData();
   }
+
   if(recordingData)(setRecordTime(timenow,startRecordData));
 
-
-    if(recordingData && $('#statusText').html() != 'Recording'){
+  if(recordingData && $('#statusText').html() != 'Recording'){
       $('#statusText').html('Recording');
       $('#recordCircleIcon').removeClass('text-muted');
       $('#recordCircleIcon').addClass('text-danger');
       $('#recordCircleIcon').addClass('RecordBlink');
     }
-    if(!recordingData && $('#statusText').html() != 'Not recording'){
+
+  if(!recordingData && $('#statusText').html() != 'Not recording'){
       $('#statusText').html('Not recording');
       $('#recordCircleIcon').removeClass('text-danger');
       $('#recordCircleIcon').addClass('text-muted');
       $('#recordCircleIcon').removeClass('RecordBlink');
     }
+
 
 }
 
@@ -551,83 +562,65 @@ function setRecordTime(timenow,timeinit) {
     $("#recordHours").html(hour);
 }
 
+//function to store incoming data into local json array
+function localDataStreamArray(time){
+  let array = {};
+  array[time] = {};
+  for (let type of GlobablDataTypes) {
+    if(typeof window[type] !== 'undefined'){
+      array[time][type] = window[type];
+    }
+  }
+  dataLoggerArray.push(array);
 
+}
+
+function writeWebWorker(){
+  var dataWorker = new Worker("./js/composedata.js");
+  dataWorker.onmessage = receivedCompiledData;
+  dataWorker.postMessage({
+    MessageType: 'compileData',
+    dataset: dataLoggerArray.toArray(),
+    interval: Number($("#datalogInterval").val()),
+    lastWrite: lastloggedDate,
+    currentWrite: nextLogtime,
+    comments: commentArray,
+  });
+}
 function saveData() {
 
-    let interval = $("#datalogInterval").val() * 1000 ;
-    //default to 5 seconds
-    if(!interval){ interval = 5000;}
+    let interval = $("#datalogInterval").val();
 
-    //do not allow for less than 1 second between recorded values
-    if(interval < 1000){interval = 1000;}
+    //default to every 5 seconds for writing to a file
+    if(!interval || interval < 1000){ interval = 5000;}
+
+    //if highspeed data acquisition (>1000 Hz) is desired, then we write to file less frequently to attempt to miss data points
+    if(interval < 1000){interval = 5000;}
 
     let tnow = Math.floor(performance.now());
-    if(tnow > nextLogtime){
+    let timeMs = Date.now();
+    if(timeMs > nextLogtime){
 
+        //is this the first new recording to a file?
         if(nextLogtime == 0){
-          nextLogtime = tnow;
+          nextLogtime = timeMs;
         }
-        writeData(Date.now());
-        RecordTimeDrift = Math.floor(performance.now()) - tnow;
+        writeWebWorker();
         lastloggedDate = nextLogtime;
-        nextLogtime = nextLogtime + interval;
+        nextLogtime = nextLogtime + Number(interval);
       }
 }
 
-async function writeData(writetime){
-  //write to datalog file
-  // Get the current file size.
+function receivedCompiledData(event){
+  writeData(event.data);
+}
+
+async function writeData(string){
   const writableStream = await fileHandle.createWritable({ keepExistingData: true });
   const size = (await fileHandle.getFile()).size;
-
-  let output = writetime+',';
-
-  //do not place new comment every time
-  let newComment = $('#fileComment-input').data("comment");
-  if(newComment){
-    output += newComment+',';
-    $('#fileComment-input').data("comment", '');
-  }else{
-    output += ',';
-  }
-
-  let columns = 0;
-  for (let type of GlobablDataTypes) {
-    if(typeof window[type] !== 'undefined'){
-      let dataset = window[type];
-      for (var key in dataset) {
-          output += dataset[key]+',';
-          columns++;
-      }
-    }
-  }
-  //Checks if we need to add the column headers to the file - possible that a channel was added after recording
-  if(columns != loggerColumnCount){
-    var columnNames = 'time,comment,';
-    for (let type of GlobablDataTypes) {
-      if(typeof window[type] !== 'undefined'){
-        let dataset = window[type];
-        for (var key in dataset) {
-          let dataType = type;
-          if(type == 'transformSerial'){
-            dataType = 'serialChannel';
-          }
-          let chNamekey = dataType+'-Name';
-          if(GlobalConfigArray[dataType][key][chNamekey] !== 'undefined'){
-            columnNames += type+'_'+key+'('+GlobalConfigArray[dataType][key][chNamekey] + '),';
-          }else{
-            columnNames += type+'_'+key+',';
-          }
-        }
-      }
-    }
-    output = columnNames + ' \r\n' + output;
-    loggerColumnCount = columns;
-  }
-
   await writableStream.write({
     type: "write",
-    data: output+" \r\n",
+    data: string,
     position: size,
   });
   await writableStream.close();
@@ -759,7 +752,7 @@ function drawGraph(i,origin,divcreate){
                 realtime: {
                   duration: 10000,
                   refresh: 50,
-                  frameRate: 30,
+                  frameRate: 15,
                   delay: 10,
                   onRefresh: chart => {
                       const now = Date.now();

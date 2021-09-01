@@ -18,6 +18,7 @@
     <script src="js/idb-keyval.min.js"></script>
     <script src="js/exprEval.bundle.min.js"></script>
     <script src="js/jquery-ui.min.js"></script>
+    <script src="js/cbuffer.js"></script>
 
     <script src="js/main.js"></script>
 
@@ -125,8 +126,8 @@ function dontLeave() {
                   <div class="col-md-8">
                     <div class="input-group mb-3">
                       <span class="input-group-text">Log every</span>
-                      <input type="number" step="1" class="form-control form-control-sm logdata-settings" style="text-align: right;" placeholder="5" id="datalogInterval">
-                      <span class="input-group-text" id="secondsinput-unit">seconds</span>
+                      <input type="number" step="1" class="form-control form-control-sm logdata-settings" style="text-align: right;" value="5000" id="datalogInterval">
+                      <span class="input-group-text" id="msinput-unit">ms</span>
                     </div>
                   </div>
                 </div>
