@@ -1,5 +1,7 @@
 # ![DAQari](https://github.com/nravanelli/DAQari/blob/main/images/logo.svg) DAQari
 
+[![status](https://joss.theoj.org/papers/ac2ab1df9ac70eed788d6c2ad0a84b12/status.svg)](https://joss.theoj.org/papers/ac2ab1df9ac70eed788d6c2ad0a84b12)
+
 A simple browser-based DAQ software using WebSerial &amp; FileSystem Access API's
 
 **DAQari** was born from my need for a simple data acquisition software that could read 16 Analog signals at ~0.2Hz (or every 5 seconds) passed through an ADC Arduino shield. It is not as sophisticated as products from LabChart, LabView, or MATlab. However, if all you need is analog (or digital) inputs that can be ingested by an Arduino board and at low frequency (eg < 200 Hz), this is more than sufficient. Considering that commercial options cost many $1000's, a simple DAQ unit can be built for < $30 with 8 10-bit analog inputs. Moreover, you can have multiple instances of **DAQari** running at the same time on different Arduinos by simply opening new tabs/windows.
