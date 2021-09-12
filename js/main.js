@@ -371,6 +371,7 @@ $(document).ready(function() {
     $("#LogdataSwitch").change(function(){
         if ($(this).is(':checked')){
           recordingData = true;
+          nextLogtime = Date.now();
           $("#datalogInterval").prop('disabled', true);
         }else{
           recordingData = false;
@@ -599,12 +600,8 @@ function saveData() {
 
     let tnow = Math.floor(performance.now());
     let timeMs = Date.now();
-    if(timeMs > nextLogtime){
-
-        //is this the first new recording to a file?
-        if(nextLogtime == 0){
-          nextLogtime = timeMs;
-        }
+    var lastCBuffer = parseInt(Object.keys(dataLoggerArray.last()));
+    if(timeMs > nextLogtime && nextLogtime < lastCBuffer){
         writeWebWorker();
         lastloggedDate = nextLogtime;
         nextLogtime = nextLogtime + Number(interval);
